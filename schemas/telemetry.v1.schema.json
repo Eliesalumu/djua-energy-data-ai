@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "telemetry.v1",
+  "description": "Schéma de référence pour le contrat de télémétrie v1",
+  "type": "object",
+  "required": ["device_id", "timestamp", "battery_level"],
+  "properties": {
+    "device_id": {"type": "string"},
+    "timestamp": {"type": "string"},
+    "battery_level": {"type": "number"},
+    "status": {"type": "string"}
+  }
+}

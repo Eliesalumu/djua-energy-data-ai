@@ -1,0 +1,3 @@
+# Composition Docker de référence pour le MVP local.
+# L'implémentation réelle sera planifiée après validation de la structure initiale.
+services: {}

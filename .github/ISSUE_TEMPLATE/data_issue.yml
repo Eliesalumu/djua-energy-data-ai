@@ -1,0 +1,9 @@
+name: Data issue
+about: Signaler un problème lié aux données ou aux contrats
+title: '[data] '
+labels: data
+body:
+  - type: textarea
+    attributes:
+      label: Contexte
+      description: Décrire le problème de données ou de contrat.

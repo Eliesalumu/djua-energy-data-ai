@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: djua-energy-data-ai
+Version: 0.1.0
+Summary: Plateforme Data & AI pour Djua Energy en phase de structuration
+Author: Data & AI Team
+Requires-Python: >=3.12
+License-File: LICENSE
+Dynamic: license-file

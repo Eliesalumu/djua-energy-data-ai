@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: markdown-lint
+        name: markdown-lint
+        entry: python -m markdownlint
+        language: system
+        files: '\.(md)$'

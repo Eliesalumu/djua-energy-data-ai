@@ -1,0 +1,35 @@
+# Environnements Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Secrets et environnement
+.env
+.env.*
+!.env.example
+
+# Données et artefacts
+*.parquet
+*.duckdb
+*.db
+*.sqlite3
+*.csv
+*.jsonl
+*.log
+*.tmp
+
+# Modèles et résultats
+models/
+artifacts/
+mlruns/
+checkpoints/
+outputs/
+
+# Editeurs et OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

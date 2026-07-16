@@ -1,0 +1,1 @@
+-- Placeholder pour l'initialisation MySQL future.

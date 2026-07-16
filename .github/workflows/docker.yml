@@ -1,0 +1,9 @@
+name: docker-doc
+on:
+  workflow_dispatch:
+
+jobs:
+  docker-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Aucun conteneur n'est encore lancé.'

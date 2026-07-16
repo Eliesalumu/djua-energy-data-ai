@@ -1,0 +1,9 @@
+name: Bug report
+about: Signaler un problème sur la structure du dépôt
+title: '[bug] '
+labels: bug
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: Décrire le problème observé.

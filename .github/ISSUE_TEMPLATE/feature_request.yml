@@ -1,0 +1,9 @@
+name: Feature request
+about: Proposer une évolution du dépôt ou du cadre de travail
+title: '[feature] '
+labels: enhancement
+body:
+  - type: textarea
+    attributes:
+      label: Proposition
+      description: Décrire la fonctionnalité attendue.

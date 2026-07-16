@@ -1,0 +1,9 @@
+name: ci-doc
+on:
+  workflow_dispatch:
+
+jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Validation documentaire seulement.'
