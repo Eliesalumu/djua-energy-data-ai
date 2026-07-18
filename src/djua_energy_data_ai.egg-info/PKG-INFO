@@ -5,4 +5,10 @@ Summary: Plateforme Data & AI pour Djua Energy en phase de structuration
 Author: Data & AI Team
 Requires-Python: >=3.12
 License-File: LICENSE
+Requires-Dist: fastapi>=0.111.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: pandas>=2.2.0
+Requires-Dist: scikit-learn>=1.4.0
+Requires-Dist: joblib>=1.4.0
+Requires-Dist: pytest>=8.3.0
 Dynamic: license-file

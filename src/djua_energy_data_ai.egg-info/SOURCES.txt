@@ -61,4 +61,5 @@ src/djua_energy/scoring/service.py
 src/djua_energy_data_ai.egg-info/PKG-INFO
 src/djua_energy_data_ai.egg-info/SOURCES.txt
 src/djua_energy_data_ai.egg-info/dependency_links.txt
+src/djua_energy_data_ai.egg-info/requires.txt
 src/djua_energy_data_ai.egg-info/top_level.txt
