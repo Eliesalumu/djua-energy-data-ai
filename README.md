@@ -81,6 +81,24 @@ Demo API vers `/telemetry/analyze` :
 .\.venv\Scripts\python.exe scripts\demo_telemetry_api.py
 ```
 
+Demo flotte temps reel multi-devices :
+
+```powershell
+.\.venv\Scripts\python.exe scripts\simulate_fleet_realtime.py
+```
+
+La commande ci-dessus tourne en continu jusqu'a `Ctrl+C`. Pour une demo courte :
+
+```powershell
+.\.venv\Scripts\python.exe scripts\simulate_fleet_realtime.py --cycles 18
+```
+
+Demo jury internationale temps reel :
+
+```powershell
+.\scripts\demo_jury_realtime_fleet.ps1
+```
+
 ## Donnees Boitier Attendues
 
 Le boitier envoie des mesures brutes. Le pipeline calcule ensuite les features IA.

@@ -1,1 +1,54 @@
-{"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "intervention.v1", "description": "Placeholder pour les retours techniciens futurs"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "intervention.v1",
+  "description": "Contrat frontend/API pour transformer une decision IA en mission terrain. La creation persistante reste a implementer.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "intervention_id",
+    "decision_id",
+    "kit_id",
+    "type",
+    "priority",
+    "status",
+    "reason"
+  ],
+  "properties": {
+    "intervention_id": {"type": "string"},
+    "decision_id": {"type": "string"},
+    "kit_id": {"type": "string"},
+    "client_id": {"type": "string"},
+    "type": {
+      "type": "string",
+      "enum": ["fraud_check", "preventive_maintenance", "battery_replacement", "connectivity_diagnostic", "installation_visit"]
+    },
+    "priority": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+    "urgency": {"type": "string", "enum": ["same_day", "next_day", "this_week", "monitoring"]},
+    "status": {
+      "type": "string",
+      "enum": ["draft", "scheduled", "assigned", "in_progress", "completed", "cancelled"]
+    },
+    "reason": {"type": "string"},
+    "justification": {"type": "string"},
+    "assigned_team": {"type": "string"},
+    "assigned_technician_id": {"type": "string"},
+    "scheduled_start_at": {"type": ["string", "null"]},
+    "due_at": {"type": ["string", "null"]},
+    "estimated_duration_minutes": {"type": "integer", "minimum": 0},
+    "estimated_cost": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "amount": {"type": "number", "minimum": 0},
+        "currency": {"type": "string"},
+        "method": {"type": "string"}
+      }
+    },
+    "required_skills": {"type": "array", "items": {"type": "string"}},
+    "checklist": {"type": "array", "items": {"type": "string"}},
+    "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
+    "completed_at": {"type": ["string", "null"]},
+    "source": {"type": "object", "additionalProperties": true}
+  }
+}

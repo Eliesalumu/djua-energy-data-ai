@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,24 @@ def _yes_no(value: Any) -> str:
 
 def _risk_label(value: str) -> str:
     return "RISQUE ELEVE" if value == "high" else "normal"
+
+
+def _alert_label_fr(value: str) -> str:
+    return {
+        "CRITICAL": "critique",
+        "HIGH": "eleve",
+        "MEDIUM": "moyen",
+        "NORMAL": "normal",
+    }.get(value, value.lower())
+
+
+def _criticality_rank(level: str) -> int:
+    return {"NORMAL": 0, "MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}.get(level, 0)
+
+
+def _display_section(title: str) -> None:
+    print("\n" + title)
+    print("-" * len(title))
 
 
 def _display_dataset_overview(df: pd.DataFrame) -> None:
@@ -280,13 +299,310 @@ def _display_scenario_result(
 
     return {
         "scenario": title,
+        "scenario_key": scenario,
         "alert_level": _alert_level(maintenance, security),
         "maintenance": _risk_label(maintenance["risk_level"]),
         "maintenance_score": maintenance["score"],
+        "maintenance_reasons": maintenance["reasons"],
+        "maintenance_model_score": model_maintenance["avg_score"],
         "security": _risk_label(security["risk_level"]),
         "security_score": security["score"],
+        "security_reasons": security["reasons"],
+        "security_model_score": model_security["avg_score"],
         "action": action,
     }
+
+
+def _build_scenario_summary(
+    scenario: str,
+    scenario_rows: pd.DataFrame,
+    maintenance_predictions: list[dict[str, Any]],
+    security_predictions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    title = SCENARIO_TITLES.get(scenario, scenario)
+    model_maintenance = _prediction_summary(maintenance_predictions, "technical_risk_probability")
+    model_security = _prediction_summary(security_predictions, "suspicious_activity_score")
+    assessment = _scenario_assessment(scenario_rows)
+    maintenance = assessment["maintenance"]
+    security = assessment["security"]
+    return {
+        "scenario": title,
+        "scenario_key": scenario,
+        "alert_level": _alert_level(maintenance, security),
+        "maintenance": _risk_label(maintenance["risk_level"]),
+        "maintenance_score": maintenance["score"],
+        "maintenance_reasons": maintenance["reasons"],
+        "maintenance_model_score": model_maintenance["avg_score"],
+        "security": _risk_label(security["risk_level"]),
+        "security_score": security["score"],
+        "security_reasons": security["reasons"],
+        "security_model_score": model_security["avg_score"],
+        "action": _recommended_action(maintenance, security),
+    }
+
+
+def _safe_min(df: pd.DataFrame, column: str, default: float = 0.0) -> float:
+    return float(df[column].min()) if column in df and not df.empty else default
+
+
+def _safe_max(df: pd.DataFrame, column: str, default: float = 0.0) -> float:
+    return float(df[column].max()) if column in df and not df.empty else default
+
+
+def _safe_bool_any(df: pd.DataFrame, column: str) -> bool:
+    return bool(df[column].max()) if column in df and not df.empty else False
+
+
+def _device_indicators(device_rows: pd.DataFrame) -> dict[str, Any]:
+    day_rows = device_rows[device_rows.get("day_period", "day") == "day"] if "day_period" in device_rows else device_rows
+    solar_rows = day_rows if not day_rows.empty else device_rows
+    return {
+        "measure_count": len(device_rows),
+        "scenario_count": int(device_rows["scenario"].nunique()) if "scenario" in device_rows else 0,
+        "min_voltage": _safe_min(device_rows, "battery_voltage_v"),
+        "max_temperature": _safe_max(device_rows, "battery_temperature_c"),
+        "min_soc": _safe_min(device_rows, "state_of_charge_pct"),
+        "min_solar_power": _safe_min(solar_rows, "solar_power_w"),
+        "max_connectivity_gap": int(_safe_max(device_rows, "connectivity_gap_seconds")),
+        "movement_detected": _safe_bool_any(device_rows, "movement_detected"),
+        "tamper_detected": _safe_bool_any(device_rows, "tamper_detected"),
+        "enclosure_opened": _safe_bool_any(device_rows, "enclosure_opened"),
+        "max_ambient_temperature": _safe_max(device_rows, "ambient_temperature_c"),
+        "min_irradiance": _safe_min(solar_rows, "solar_irradiance_w_m2"),
+        "max_load_power": _safe_max(device_rows, "load_power_w"),
+    }
+
+
+def _global_alert_level(summaries: list[dict[str, Any]], indicators: dict[str, Any]) -> str:
+    levels = [item["alert_level"] for item in summaries]
+    level = max(levels, key=_criticality_rank) if levels else "NORMAL"
+    if indicators["enclosure_opened"] or indicators["tamper_detected"]:
+        return "CRITICAL"
+    if indicators["max_temperature"] >= 48 and indicators["min_voltage"] <= 12.3:
+        return "CRITICAL"
+    return level
+
+
+def _global_reliability_score(summaries: list[dict[str, Any]], indicators: dict[str, Any]) -> float:
+    score = 100.0
+    if indicators["enclosure_opened"]:
+        score -= 25
+    if indicators["tamper_detected"] or indicators["movement_detected"]:
+        score -= 18
+    if indicators["max_temperature"] >= 45:
+        score -= 18
+    if indicators["min_voltage"] <= 12.3:
+        score -= 14
+    if indicators["min_soc"] <= 60:
+        score -= 10
+    if indicators["max_connectivity_gap"] >= 300:
+        score -= 12
+    if indicators["min_solar_power"] <= 70:
+        score -= 8
+    high_scenarios = sum(1 for item in summaries if item["alert_level"] in {"HIGH", "CRITICAL"})
+    score -= max(0, high_scenarios - 2) * 3
+    if score <= 0 and (indicators["enclosure_opened"] or indicators["max_temperature"] >= 45):
+        return 18.0
+    return max(0.0, min(100.0, score))
+
+
+def _issue_sentences(indicators: dict[str, Any]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    if indicators["enclosure_opened"]:
+        issues.append({
+            "title": "Ouverture du boitier",
+            "sentence": (
+                "L'IA a detecte que l'enclosure du device a ete ouverte au moins une fois. "
+                "Ce signal est critique, car il peut correspondre a une intervention non autorisee, "
+                "a une tentative de sabotage ou a une manipulation physique du boitier."
+            ),
+            "action": (
+                "Il faut envoyer un technicien, verifier l'etat du boitier, controler le capteur "
+                "d'ouverture, documenter l'intervention et confirmer si l'ouverture etait autorisee."
+            ),
+        })
+    if indicators["tamper_detected"] or indicators["movement_detected"]:
+        details = []
+        if indicators["movement_detected"]:
+            details.append("un mouvement anormal")
+        if indicators["tamper_detected"]:
+            details.append("un signal de tamper")
+        issues.append({
+            "title": "Risque securite terrain",
+            "sentence": (
+                "L'IA a observe " + " et ".join(details) + ". "
+                "Le device n'est donc pas seulement en anomalie technique : il presente aussi "
+                "un risque securite qui doit etre verifie physiquement."
+            ),
+            "action": (
+                "Il faut verifier la position du kit, controler le verrouillage, regarder les traces "
+                "de manipulation et comparer l'evenement avec l'historique client ou technicien."
+            ),
+        })
+    if indicators["max_temperature"] >= 45:
+        issues.append({
+            "title": "Surchauffe batterie",
+            "sentence": (
+                f"L'IA a detecte une surchauffe batterie avec un maximum de "
+                f"{_fmt_number(indicators['max_temperature'], 1)} C. "
+                "Ce niveau de temperature peut accelerer la degradation de la batterie et augmenter "
+                "le risque de panne si le device reste en service sans controle."
+            ),
+            "action": (
+                "Il faut inspecter la batterie, verifier la ventilation, controler le regulateur de charge "
+                "et eviter une charge prolongee tant que la temperature n'est pas revenue dans une zone normale."
+            ),
+        })
+    if indicators["min_voltage"] <= 12.3 or indicators["min_soc"] <= 60:
+        issues.append({
+            "title": "Faiblesse batterie",
+            "sentence": (
+                f"L'IA signale une faiblesse batterie : la tension descend jusqu'a "
+                f"{_fmt_number(indicators['min_voltage'], 2)} V et l'etat de charge descend jusqu'a "
+                f"{_fmt_number(indicators['min_soc'], 1)} %. "
+                "Cela indique que le device peut perdre en autonomie ou tomber en indisponibilite."
+            ),
+            "action": (
+                "Il faut tester la capacite reelle de la batterie, verifier les cycles de charge/decharge "
+                "et planifier un remplacement si la degradation se confirme."
+            ),
+        })
+    if indicators["max_connectivity_gap"] >= 300:
+        issues.append({
+            "title": "Perte de connectivite",
+            "sentence": (
+                f"L'IA a detecte une perte de connectivite avec un silence maximal de "
+                f"{indicators['max_connectivity_gap']} secondes. "
+                "Pendant cette periode, la plateforme peut perdre la supervision temps reel du kit."
+            ),
+            "action": (
+                "Il faut verifier le signal reseau, la carte SIM, l'antenne et la file de messages en attente "
+                "pour retablir une remontee fiable des donnees."
+            ),
+        })
+    if indicators["min_solar_power"] <= 70:
+        issues.append({
+            "title": "Production solaire faible",
+            "sentence": (
+                f"L'IA observe une production solaire basse, avec un minimum de "
+                f"{_fmt_number(indicators['min_solar_power'], 1)} W sur les mesures de jour disponibles. "
+                "Cette situation peut expliquer une recharge insuffisante et aggraver les problemes batterie."
+            ),
+            "action": (
+                "Il faut nettoyer ou repositionner le panneau, verifier le cablage solaire et controler "
+                "le regulateur de charge."
+            ),
+        })
+    if not issues:
+        issues.append({
+            "title": "Etat normal",
+            "sentence": (
+                "L'IA ne detecte pas de signal critique sur ce device. Les mesures techniques, "
+                "securite, connectivite et production solaire restent compatibles avec une surveillance normale."
+            ),
+            "action": "Il faut continuer la supervision standard sans intervention terrain immediate.",
+        })
+    return issues
+
+
+def _display_variables_analyzed(device_rows: pd.DataFrame) -> None:
+    sample = device_rows.iloc[0]
+    _display_section("Variables analysees par l'IA")
+    print(
+        "Contexte terrain      : "
+        f"region={sample.get('region', 'n/a')}, saison={sample.get('season', 'n/a')}, "
+        f"installation={sample.get('installation_type', 'n/a')}, usage={sample.get('usage_profile', 'n/a')}, "
+        f"zone securite={sample.get('security_risk_zone', 'n/a')}."
+    )
+    print(
+        "Batterie              : tension, temperature, etat de charge, age batterie, "
+        "puissance batterie et tendance sur la fenetre de mesures."
+    )
+    print(
+        "Solaire               : puissance solaire, irradiance, periode jour/nuit et capacite de recharge."
+    )
+    print(
+        "Securite physique     : mouvement detecte, tamper detecte, enclosure opened, distance et precision GPS."
+    )
+    print(
+        "Connectivite          : qualite reseau, statut connexion, signal, pertes de communication et gap maximum."
+    )
+    print(
+        "Charge et environnement: consommation, temperature exterieure, humidite et profil d'utilisation."
+    )
+
+
+def _display_global_diagnosis(
+    device_id: str,
+    device_rows: pd.DataFrame,
+    summaries: list[dict[str, Any]],
+) -> None:
+    indicators = _device_indicators(device_rows)
+    level = _global_alert_level(summaries, indicators)
+    sample = device_rows.iloc[0]
+    critical_or_high = [
+        item for item in summaries if item["alert_level"] in {"CRITICAL", "HIGH"}
+    ]
+    sorted_summaries = sorted(
+        summaries,
+        key=lambda item: (
+            _criticality_rank(item["alert_level"]),
+            float(item["maintenance_score"]) + float(item["security_score"]),
+        ),
+        reverse=True,
+    )
+    detected_cases = [
+        item["scenario"]
+        for item in sorted_summaries
+        if item["alert_level"] in {"CRITICAL", "HIGH"}
+    ]
+
+    print("\n" + "=" * 78)
+    print(f"DIAGNOSTIC IA GLOBAL DU DEVICE {device_id}")
+    print("=" * 78)
+
+    if not critical_or_high:
+        print(
+            f"Ce device {device_id} est dans un etat normal. L'IA n'a pas detecte de probleme critique "
+            f"sur les {indicators['measure_count']} mesures analysees. La surveillance standard peut continuer."
+        )
+        _display_section("Decision recommandee")
+        print("Decision IA : continuer la supervision normale du device.")
+        return
+
+    problems = ", ".join(detected_cases)
+    security_part = ""
+    if indicators["enclosure_opened"] or indicators["tamper_detected"] or indicators["movement_detected"]:
+        security_details = []
+        if indicators["enclosure_opened"]:
+            security_details.append("ouverture du boitier detectee")
+        if indicators["tamper_detected"]:
+            security_details.append("tamper detecte")
+        if indicators["movement_detected"]:
+            security_details.append("mouvement anormal detecte")
+        security_part = " Sur le plan securite, " + ", ".join(security_details) + "."
+
+    print(
+        f"Ce device {device_id} est dans un etat {_alert_label_fr(level)}. "
+        f"L'IA a analyse {indicators['measure_count']} mesures et detecte les cas suivants : {problems}. "
+        f"La perte de connectivite atteint jusqu'a {indicators['max_connectivity_gap']} secondes. "
+        f"La batterie, agee de {int(sample.get('battery_age_months', 0))} mois, presente une surchauffe "
+        f"jusqu'a {_fmt_number(indicators['max_temperature'], 1)} C, une tension qui descend jusqu'a "
+        f"{_fmt_number(indicators['min_voltage'], 2)} V et un niveau de charge minimum de "
+        f"{_fmt_number(indicators['min_soc'], 1)} %. "
+        f"La production solaire descend jusqu'a {_fmt_number(indicators['min_solar_power'], 1)} W, "
+        f"ce qui peut aggraver la degradation batterie et l'autonomie du device."
+        f"{security_part}"
+    )
+
+    actions = [
+        "ouvrir une intervention prioritaire",
+        "verifier physiquement le boitier et confirmer si l'ouverture etait autorisee",
+        "controler la batterie, la ventilation et le regulateur de charge",
+        "verifier le panneau solaire, le cablage et la qualite de recharge",
+        "retablir la connectivite en controlant le signal reseau, la SIM et l'antenne",
+    ]
+    print("\nAction IA : " + "; ".join(actions) + ".")
 
 
 def _display_final_summary(device_id: str, summaries: list[dict[str, Any]]) -> None:
@@ -304,30 +620,47 @@ def _display_final_summary(device_id: str, summaries: list[dict[str, Any]]) -> N
             print(f"- {item['scenario']} : {item['action']}")
 
 
-def main() -> None:
-    print("Djua Energy - Demonstration IA par dispositif")
-    print("=============================================")
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Demonstration CLI des predictions IA pour un dispositif Djua Energy."
+    )
+    parser.add_argument(
+        "--device",
+        help="Identifiant du dispositif a analyser, par exemple device-2.",
+    )
+    parser.add_argument(
+        "--details",
+        action="store_true",
+        help="Afficher aussi le detail technique scenario par scenario.",
+    )
+    parser.add_argument(
+        "--jury",
+        action="store_true",
+        help="Afficher une sortie concentree pour la demonstration jury.",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Analyser un seul device puis terminer le script.",
+    )
+    return parser.parse_args()
 
-    if not DATASET_PATH.exists():
-        print(f"Dataset introuvable : {DATASET_PATH}")
-        print("Ce CLI utilise uniquement le dataset existant. Generez-le avant la demonstration.")
-        return
 
-    df = pd.read_csv(DATASET_PATH)
-    _display_dataset_overview(df)
-    _display_available_devices(df)
-
-    device_id = input("\nEntrez l'identifiant du dispositif (ex: device-1): ").strip()
-
+def _analyze_device(
+    device_id: str,
+    df: pd.DataFrame,
+    engine: LocalInferenceEngine,
+    *,
+    details: bool = False,
+) -> bool:
     if device_id not in df["device_id"].values:
         print(f"Aucun dispositif trouve pour {device_id}")
-        return
+        return False
 
     device_rows = df[df["device_id"] == device_id].copy()
-    engine = LocalInferenceEngine("artifacts")
 
-    print("\nPresentation des scenarios pour ce dispositif")
-    print("---------------------------------------------")
+    print("\nAnalyse du dispositif")
+    print("---------------------")
     print(f"Device analyse : {device_id}")
     print(f"Mesures analysees : {len(device_rows)}")
 
@@ -342,11 +675,52 @@ def main() -> None:
             engine.infer_security(records[: index + 1])
             for index in range(len(records))
         ]
-        summaries.append(
-            _display_scenario_result(scenario, scenario_rows, maintenance_predictions, security_predictions)
-        )
+        if details:
+            summaries.append(
+                _display_scenario_result(scenario, scenario_rows, maintenance_predictions, security_predictions)
+            )
+        else:
+            summaries.append(
+                _build_scenario_summary(scenario, scenario_rows, maintenance_predictions, security_predictions)
+            )
 
-    _display_final_summary(device_id, summaries)
+    _display_global_diagnosis(device_id, device_rows, summaries)
+    if details:
+        _display_final_summary(device_id, summaries)
+    return True
+
+
+def main() -> None:
+    args = _parse_args()
+    print("Djua Energy - Demonstration IA par dispositif")
+    print("=============================================")
+
+    if not DATASET_PATH.exists():
+        print(f"Dataset introuvable : {DATASET_PATH}")
+        print("Ce CLI utilise uniquement le dataset existant. Generez-le avant la demonstration.")
+        return
+
+    df = pd.read_csv(DATASET_PATH)
+    engine = LocalInferenceEngine("artifacts")
+    if not args.jury:
+        _display_dataset_overview(df)
+        _display_available_devices(df)
+
+    first_device_id = args.device or input("\nEntrez l'identifiant du dispositif (ex: device-2): ").strip()
+    _analyze_device(first_device_id, df, engine, details=args.details)
+
+    if args.once or args.details:
+        print("\nFin de demonstration.")
+        return
+
+    while True:
+        next_device_id = input("\nEntrez un autre device a analyser, ou tapez q pour quitter: ").strip()
+        if next_device_id.lower() in {"q", "quit", "exit"}:
+            break
+        if not next_device_id:
+            continue
+        _analyze_device(next_device_id, df, engine, details=False)
+
     print("\nFin de demonstration.")
 
 

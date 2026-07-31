@@ -1,1 +1,55 @@
-{"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "customer.v1", "description": "Placeholder pour les données client futures"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "customer.v1",
+  "description": "Contrat profil client pour la vue 360. Les donnees paiement/CRM reelles restent a connecter via Orange ou une source metier.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "client_id",
+    "name",
+    "risk_score",
+    "risk_level",
+    "source"
+  ],
+  "properties": {
+    "client_id": {"type": "string"},
+    "name": {"type": "string"},
+    "phone": {"type": ["string", "null"]},
+    "region": {"type": ["string", "null"]},
+    "city": {"type": ["string", "null"]},
+    "country": {"type": ["string", "null"]},
+    "active_kit_id": {"type": ["string", "null"]},
+    "contract_id": {"type": ["string", "null"]},
+    "risk_score": {"type": "number", "minimum": 0, "maximum": 100},
+    "risk_level": {"type": "string", "enum": ["critical", "high", "medium", "low"]},
+    "trend": {"type": "string", "enum": ["up", "down", "stable", "not_available"]},
+    "model_version": {"type": "string"},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "summary": {"type": "string"},
+    "main_factors": {"type": "array", "items": {"type": "string"}},
+    "recommendations": {"type": "array", "items": {"type": "string"}},
+    "payment_risk": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "score": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "level": {"type": "string"},
+        "late_payments": {"type": ["integer", "null"], "minimum": 0},
+        "amount_due": {"type": ["number", "null"], "minimum": 0},
+        "currency": {"type": ["string", "null"]},
+        "source": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "consumption": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "average_wh": {"type": ["number", "null"]},
+        "trend": {"type": "string"},
+        "anomaly": {"type": ["boolean", "null"]},
+        "source": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "source": {"type": "object", "additionalProperties": true}
+  }
+}
