@@ -1,0 +1,18 @@
+component_id,component_type,manufacturer,model,nominal_power_w,capacity_ah,capacity_wh,voltage_v,chemistry,usable_depth_of_discharge,cycle_life,efficiency,inverter_continuous_power_w,inverter_surge_power_w,controller_type,controller_current_a,warranty_months,unit_price,currency,stock_status,product_status,compatible_system_voltage,installation_constraints,active,source,last_updated_at,is_synthetic
+panel_demo_120,panel,DemoSolar,PV-120,120,0,0,0,,0,0,0.19,0,0,,0,24,65000,XAF,demo,active,12/24,roof_or_ground,true,synthetic_demo,2026-08-03,true
+panel_demo_200,panel,DemoSolar,PV-200,200,0,0,0,,0,0,0.20,0,0,,0,24,105000,XAF,demo,active,12/24/48,roof_or_ground,true,synthetic_demo,2026-08-03,true
+panel_demo_350,panel,DemoSolar,PV-350,350,0,0,0,,0,0,0.21,0,0,,0,36,165000,XAF,demo,active,24/48,roof_or_ground,true,synthetic_demo,2026-08-03,true
+panel_demo_550,panel,DemoSolar,PV-550,550,0,0,0,,0,0,0.21,0,0,,0,36,245000,XAF,demo,active,48,roof_or_ground,true,synthetic_demo,2026-08-03,true
+battery_agm_100_12,battery,DemoBattery,AGM-100-12,0,100,1200,12,AGM lead acid,0.50,700,0.85,0,0,,0,12,130000,XAF,demo,active,12/24/48,ventilated_space,true,synthetic_demo,2026-08-03,true
+battery_agm_200_12,battery,DemoBattery,AGM-200-12,0,200,2400,12,AGM lead acid,0.50,700,0.85,0,0,,0,12,235000,XAF,demo,active,12/24/48,ventilated_space,true,synthetic_demo,2026-08-03,true
+battery_lfp_100_12,battery,DemoBattery,LFP-100-12,0,100,1280,12,LiFePO4,0.85,2500,0.95,0,0,,0,36,260000,XAF,demo,active,12/24/48,protected_space,true,synthetic_demo,2026-08-03,true
+battery_lfp_200_24,battery,DemoBattery,LFP-200-24,0,200,5120,24,LiFePO4,0.85,3000,0.95,0,0,,0,48,760000,XAF,demo,active,24/48,protected_space,true,synthetic_demo,2026-08-03,true
+inverter_600,inverter,DemoPower,INV-600,0,0,0,12,,0,0,0.92,600,1200,,0,12,160000,XAF,demo,active,12,indoor,true,synthetic_demo,2026-08-03,true
+inverter_1200,inverter,DemoPower,INV-1200,0,0,0,24,,0,0,0.92,1200,2400,,0,12,260000,XAF,demo,active,24,indoor,true,synthetic_demo,2026-08-03,true
+inverter_2500,inverter,DemoPower,INV-2500,0,0,0,24,,0,0,0.93,2500,5000,,0,24,520000,XAF,demo,active,24/48,indoor,true,synthetic_demo,2026-08-03,true
+inverter_5000,inverter,DemoPower,INV-5000,0,0,0,48,,0,0,0.94,5000,10000,,0,24,950000,XAF,demo,active,48,indoor,true,synthetic_demo,2026-08-03,true
+controller_pwm_20,controller,DemoCharge,PWM-20,0,0,0,12,,0,0,0.85,0,0,PWM,20,12,45000,XAF,demo,active,12/24,small_system,true,synthetic_demo,2026-08-03,true
+controller_mppt_40,controller,DemoCharge,MPPT-40,0,0,0,24,,0,0,0.96,0,0,MPPT,40,24,120000,XAF,demo,active,12/24,standard,true,synthetic_demo,2026-08-03,true
+controller_mppt_80,controller,DemoCharge,MPPT-80,0,0,0,48,,0,0,0.97,0,0,MPPT,80,24,230000,XAF,demo,active,24/48,large_system,true,synthetic_demo,2026-08-03,true
+protection_dc,protection,DemoSafety,DC-PROTECT,0,0,0,0,,0,0,1,0,0,,0,12,35000,XAF,demo,active,12/24/48,required,true,synthetic_demo,2026-08-03,true
+accessory_cables,accessory,DemoInstall,CABLE-KIT,0,0,0,0,,0,0,1,0,0,,0,12,55000,XAF,demo,active,12/24/48,required,true,synthetic_demo,2026-08-03,true

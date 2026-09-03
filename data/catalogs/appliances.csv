@@ -1,0 +1,26 @@
+appliance_id,category,subcategory,name,common_name_fr,common_name_en,brand,model,rated_power_w,typical_power_w,standby_power_w,starting_power_w,surge_multiplier,average_daily_hours,duty_cycle,energy_class,voltage_v,quantity_default,usage_profile,essential_or_optional,confidence_level,data_source_type,min_power_w,max_power_w,notes
+television_led_24,media,tv,television 24 led,television LED 24 pouces,24 inch LED TV,generic,demo,35,35,1,42,1.2,5,1,B,220,1,evening,optional,medium,synthetic,25,50,Small TV common in households
+television_led_32,media,tv,television 32 led,television LED 32 pouces,32 inch LED TV,generic,demo,60,60,1,72,1.2,5,1,B,220,1,evening,optional,medium,synthetic,45,85,Typical urban household TV
+television_crt,media,tv,television crt,ancienne television CRT,CRT television,generic,demo,90,90,3,120,1.3,4,1,D,220,1,evening,optional,medium,synthetic,70,140,Older TV still found in some homes
+led_bulb_9w,lighting,bulb,led bulb,ampoule LED 9 W,LED bulb,generic,demo,9,9,0,9,1,6,1,A,220,4,evening,essential,high,synthetic,5,12,Efficient household lighting
+incandescent_bulb_60w,lighting,bulb,classic bulb,ampoule classique 60 W,incandescent bulb,generic,demo,60,60,0,60,1,4,1,E,220,2,evening,optional,medium,synthetic,40,100,Legacy lighting with high consumption
+fan_table,cooling,fan,table fan,ventilateur de table,table fan,generic,demo,45,45,0,65,1.4,8,1,C,220,1,night,essential,medium,synthetic,30,70,Useful during hot nights
+fan_ceiling,cooling,fan,ceiling fan,ventilateur plafonnier,ceiling fan,generic,demo,70,70,0,95,1.35,8,1,C,220,1,night,optional,medium,synthetic,50,95,Common in shops and homes
+fridge_efficient,cold_chain,fridge,efficient fridge,refrigerateur economique,efficient refrigerator,generic,demo,120,80,2,450,3.5,24,0.35,A,220,1,continuous,essential,medium,synthetic,60,160,Cyclic compressor appliance
+freezer_small,cold_chain,freezer,small freezer,petit congelateur,small freezer,generic,demo,180,130,2,650,3.6,24,0.45,B,220,1,continuous,essential,medium,synthetic,90,250,Important for shops and food storage
+air_conditioner_small,cooling,ac,small air conditioner,petit climatiseur,small air conditioner,generic,demo,900,850,3,2500,3,5,0.8,C,220,1,day,optional,low,synthetic,700,1200,High load; must be confirmed
+phone_charger,communication,charger,phone charger,chargeur telephone,phone charger,generic,demo,10,8,0.2,10,1,3,1,A,220,1,mixed,essential,high,synthetic,5,15,Phone charging
+laptop,computing,computer,laptop,ordinateur portable,laptop,generic,demo,65,55,1,75,1.2,5,1,B,220,1,day,optional,medium,synthetic,35,90,School or office use
+desktop_computer,computing,computer,desktop computer,ordinateur de bureau,desktop computer,generic,demo,180,160,3,240,1.3,5,1,C,220,1,day,optional,medium,synthetic,120,300,Office use
+router,communication,network,router,routeur internet,router,generic,demo,12,10,0,12,1,12,1,A,220,1,continuous,optional,medium,synthetic,6,18,Internet connectivity
+decoder,media,decoder,decoder,decodeur TV,TV decoder,generic,demo,18,15,1,20,1.1,5,1,B,220,1,evening,optional,medium,synthetic,10,25,TV accessory
+radio,media,radio,radio,radio,radio,generic,demo,12,10,0,12,1,6,1,A,220,1,day,optional,medium,synthetic,5,20,Small radio
+iron,appliance,heating,iron,fer a repasser,iron,generic,demo,1200,1100,0,1200,1,0.5,1,D,220,1,day,optional,medium,synthetic,800,1600,Short but very high power
+water_pump_small,water,pump,small water pump,petite pompe a eau,small water pump,generic,demo,370,350,0,1200,3.2,1,1,C,220,1,day,essential,medium,synthetic,250,750,Motor with startup surge
+medical_nebulizer,health,medical,nebulizer,nebuliseur medical,medical nebulizer,generic,demo,60,55,0,70,1.2,2,1,B,220,1,mixed,essential,medium,synthetic,40,80,Small health center equipment
+hair_clipper,business,coiffure,hair clipper,tondeuse coiffure,hair clipper,generic,demo,18,15,0,22,1.2,4,1,A,220,1,day,essential,medium,synthetic,10,30,Hair salon equipment
+hair_dryer,business,coiffure,hair dryer,seche-cheveux,hair dryer,generic,demo,1200,1000,0,1200,1,1,1,D,220,1,day,optional,low,synthetic,800,1800,Very high load
+printer_small,office,printer,small printer,petite imprimante,small printer,generic,demo,60,45,2,90,1.5,2,1,C,220,1,day,optional,medium,synthetic,30,120,Office or school use
+sewing_machine,business,tool,sewing machine,machine a coudre,sewing machine,generic,demo,100,90,0,160,1.6,5,1,B,220,1,day,essential,medium,synthetic,60,150,Small productive use
+grain_mill_small,agriculture,motor,small mill,petit moulin,small grain mill,generic,demo,750,700,0,2200,3.1,1,1,C,220,1,day,optional,low,synthetic,500,1200,Agricultural productive use
+pos_terminal,business,payment,pos terminal,terminal de paiement,POS terminal,generic,demo,8,6,0,8,1,10,1,A,220,1,day,essential,medium,synthetic,4,12,Small commerce

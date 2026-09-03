@@ -1,0 +1,4 @@
+product_id,product_type,label,is_synthetic,source,notice
+demo_solar_home_small,kit,Kit solaire maison petite charge,true,synthetic_demo,Remplacer par le catalogue officiel Orange Energy.
+demo_solar_home_medium,kit,Kit solaire menage urbain,true,synthetic_demo,Remplacer par le catalogue officiel Orange Energy.
+demo_solar_business_cold,kit,Kit boutique avec froid,true,synthetic_demo,Remplacer par le catalogue officiel Orange Energy.
