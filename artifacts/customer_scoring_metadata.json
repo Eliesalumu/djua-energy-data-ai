@@ -1,0 +1,38 @@
+{
+  "model_version": "customer-scoring-synthetic-v1",
+  "problem": "classification_binaire_default_90d",
+  "target": "default_next_90d",
+  "features": [
+    "estimated_income_usd",
+    "orange_money_account_age_months",
+    "historical_risk_score",
+    "paid_months_count",
+    "kit_is_suspended",
+    "payment_success_rate",
+    "failed_payment_count_12m",
+    "late_payment_count_12m",
+    "missed_payment_count_12m",
+    "days_since_last_payment",
+    "avg_payment_amount_usd",
+    "payment_amount_volatility",
+    "income_to_fee_ratio",
+    "profession_risk_score"
+  ],
+  "training_rows": 4800,
+  "test_rows": 1200,
+  "clients": 500,
+  "history_rows": 6000,
+  "positive_rate": 0.0897,
+  "metrics": {
+    "accuracy": 0.7742,
+    "precision": 0.2148,
+    "recall": 0.6337,
+    "f1": 0.3208,
+    "roc_auc": 0.7734
+  },
+  "synthetic_data": true,
+  "limitations": [
+    "Modele entraine sur donnees synthetiques, a remplacer progressivement par des historiques reels.",
+    "Decision finale a valider par une revue humaine pour les cas limites ou sensibles."
+  ]
+}

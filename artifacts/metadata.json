@@ -1,0 +1,51 @@
+{
+  "maintenance": {
+    "model_version": "synthetic-v1",
+    "features": [
+      "battery_voltage_trend",
+      "battery_voltage_volatility",
+      "soc_drop",
+      "charge_duration_seconds",
+      "discharge_duration_seconds",
+      "solar_load_ratio",
+      "health_delta",
+      "error_count",
+      "device_temp_internal",
+      "solar_controller_instability",
+      "overload_signal",
+      "electrical_stability",
+      "ambient_temperature",
+      "humidity_pct",
+      "night_operation",
+      "season_rainy"
+    ],
+    "accuracy": 0.9997,
+    "synthetic_data": true,
+    "training_rows": 10000,
+    "intended_use": "local demonstration only",
+    "limitations": [
+      "trained on synthetic telemetry only"
+    ]
+  },
+  "security": {
+    "model_version": "synthetic-v1",
+    "features": [
+      "geofence_exit",
+      "movement_speed",
+      "enclosure_opened",
+      "movement_then_gap",
+      "gap_after_opening",
+      "sim_or_operator_change",
+      "repeated_suspicious_events",
+      "mobile_installation",
+      "night_operation"
+    ],
+    "accuracy": 0.6668,
+    "synthetic_data": true,
+    "training_rows": 10000,
+    "intended_use": "local demonstration only",
+    "limitations": [
+      "trained on synthetic telemetry only"
+    ]
+  }
+}
