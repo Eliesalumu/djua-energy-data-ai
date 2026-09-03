@@ -1689,3 +1689,169 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 480px) {
+  .workspace {
+    padding: 10px 10px 24px;
+  }
+
+  .sidebar {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .nav-list {
+    margin-left: -10px;
+    margin-right: -10px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .topbar {
+    padding: 2px 2px 0;
+  }
+
+  .eyebrow {
+    margin-bottom: 5px;
+    font-size: 10px;
+  }
+
+  h1 {
+    max-width: 11ch;
+    font-size: 26px;
+  }
+
+  .hero-panel,
+  .input-panel,
+  .client-score-panel,
+  .result-panel,
+  .advisor-panel {
+    border-radius: 6px;
+    box-shadow: 0 8px 22px rgba(27, 45, 38, 0.06);
+  }
+
+  .hero-panel {
+    padding: 13px;
+  }
+
+  .hero-copy h2 {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  .section-title {
+    margin-bottom: 12px;
+  }
+
+  .section-title h2 {
+    font-size: 17px;
+  }
+
+  .section-title h2 i[data-lucide] {
+    width: 15px;
+    height: 15px;
+  }
+
+  .input-panel,
+  .client-score-panel,
+  .result-panel,
+  .advisor-panel {
+    padding: 12px;
+  }
+
+  fieldset {
+    margin-bottom: 9px;
+    padding: 11px 9px 9px;
+  }
+
+  .field-grid,
+  .field-grid.compact {
+    gap: 8px;
+  }
+
+  input,
+  select {
+    min-height: 38px;
+    padding: 7px 8px;
+  }
+
+  .preset-row {
+    gap: 2px;
+    padding: 3px;
+  }
+
+  .preset-row button {
+    min-height: 36px;
+    padding: 6px 3px;
+    font-size: 10px;
+  }
+
+  .linked-kit {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+  }
+
+  .linked-kit strong {
+    overflow-wrap: anywhere;
+    font-size: 12px;
+  }
+
+  .metric-grid div,
+  .client-score-grid div {
+    min-height: 0;
+    padding: 11px;
+  }
+
+  .metric-grid strong,
+  .client-score-grid strong {
+    min-height: 0;
+    margin-top: 5px;
+    font-size: 14px;
+  }
+
+  .verdict {
+    padding: 13px;
+  }
+
+  .verdict strong {
+    font-size: 17px;
+  }
+
+  .verdict p,
+  .run-feedback,
+  .panel-intro {
+    font-size: 12px;
+  }
+
+  .reason-groups section {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .json-view {
+    max-height: 240px;
+    white-space: pre;
+    overflow: auto;
+  }
+
+  .chat-panel {
+    padding: 12px;
+  }
+
+  .chat-panel h2 {
+    font-size: 17px;
+  }
+
+  .message {
+    max-width: 100%;
+    padding: 9px 10px;
+    font-size: 12px;
+  }
+
+  .module-test-row button,
+  .chat-form button {
+    min-height: 42px;
+  }
+}
