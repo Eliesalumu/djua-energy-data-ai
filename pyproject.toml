@@ -2,7 +2,7 @@
 name = "djua-energy-data-ai"
 version = "0.1.0"
 description = "Plateforme Data & AI pour Djua Energy en phase de structuration"
-authors = [{ name = "Data & AI Team" }]
+authors = [{ name = "Elie salumu" }]
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.111.0",
