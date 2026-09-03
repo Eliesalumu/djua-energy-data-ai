@@ -75,7 +75,6 @@ def _device_indicators(device_rows: pd.DataFrame) -> dict[str, Any]:
         "security_risk_zone": str(sample.get("security_risk_zone", "n/a")),
         "battery_age_months": int(sample.get("battery_age_months", 0)),
         "min_battery_voltage_v": _safe_min(device_rows, "battery_voltage_v"),
-        "max_battery_temperature_c": _safe_max(device_rows, "battery_temperature_c"),
         "min_state_of_charge_pct": _safe_min(device_rows, "state_of_charge_pct"),
         "min_solar_power_w": _safe_min(solar_rows, "solar_power_w"),
         "max_connectivity_gap_seconds": int(_safe_max(device_rows, "connectivity_gap_seconds")),
@@ -88,13 +87,10 @@ def _device_indicators(device_rows: pd.DataFrame) -> dict[str, Any]:
 def _local_status(indicators: dict[str, Any]) -> str:
     if indicators["enclosure_opened"] or indicators["tamper_detected"]:
         return "critique"
-    if indicators["max_battery_temperature_c"] >= 48 and indicators["min_battery_voltage_v"] <= 12.3:
-        return "critique"
     if indicators["max_connectivity_gap_seconds"] >= 300:
         return "critique"
     if (
-        indicators["max_battery_temperature_c"] >= 45
-        or indicators["min_battery_voltage_v"] <= 12.3
+        indicators["min_battery_voltage_v"] <= 12.3
         or indicators["min_state_of_charge_pct"] <= 60
         or indicators["min_solar_power_w"] <= 70
     ):
@@ -197,4 +193,3 @@ def build_fleet_context(*, dataset: pd.DataFrame | None = None) -> dict[str, Any
         "data_source": "data/generated/mvp_dataset.csv",
         "guardrails": {"synthetic_data": True, "do_not_invent": True},
     }
-

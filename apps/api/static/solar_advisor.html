@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DJUA AI Solar Advisor | Dimensionnement & Devis Solaire Intelligent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="/static/solar_advisor.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand-group">
+        <a href="/demo/kit-console" class="brand-logo" title="Retour console kit">
+          <span class="logo-icon"><i data-lucide="sun-medium"></i></span>
+          <span class="logo-text"><strong>DJUA</strong> ENERGY</span>
+        </a>
+        <span class="badge-tag"><i data-lucide="sparkles"></i> AI Solar Advisor</span>
+      </div>
+
+      <nav class="header-nav">
+        <a href="/demo/kit-console" class="nav-link"><i data-lucide="layout-dashboard"></i> Command Center</a>
+        <a href="/docs" class="nav-link" target="_blank"><i data-lucide="file-code-2"></i> API Docs</a>
+        <div class="status-pill">
+          <span class="status-dot online"></span>
+          <span id="llmStatusText">Moteur Déterministe + IA Actif</span>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-banner">
+    <div class="hero-content">
+      <p class="hero-eyebrow"><i data-lucide="zap"></i> Conseil & Dimensionnement Énergétique Intelligent</p>
+      <h1>Trouvez le kit solaire idéal pour votre foyer ou commerce</h1>
+      <p class="hero-subtitle">
+        Indiquez simplement vos appareils ou échangez avec notre conseiller IA. Nous calculons la puissance exacte des panneaux, la capacité de batterie et un devis transparent en quelques secondes.
+      </p>
+
+      <!-- Mode Selector -->
+      <div class="mode-switch-wrapper">
+        <div class="mode-switch" role="tablist">
+          <button type="button" class="mode-btn active" id="btnModeVisual" role="tab" aria-selected="true">
+            <i data-lucide="sliders"></i> Configurateur Visuel par Étapes
+          </button>
+          <button type="button" class="mode-btn" id="btnModeChat" role="tab" aria-selected="false">
+            <i data-lucide="bot"></i> Assistant Conversationnel IA
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Container -->
+  <main class="main-container">
+    
+    <!-- ==============================================
+         MODE 1: CONFIGURATEUR VISUEL PAR ÉTAPES
+         ============================================== -->
+    <div id="viewVisualConfigurator" class="view-panel active">
+      
+      <!-- Stepper Header -->
+      <div class="stepper-nav">
+        <button class="step-nav-item active" data-step="1">
+          <span class="step-num">1</span>
+          <div class="step-info">
+            <span class="step-title">Mon Projet</span>
+            <span class="step-desc">Usage & Localisation</span>
+          </div>
+        </button>
+        <div class="step-divider"></div>
+        <button class="step-nav-item" data-step="2">
+          <span class="step-num">2</span>
+          <div class="step-info">
+            <span class="step-title">Mes Équipements</span>
+            <span class="step-desc">Appareils & Besoins</span>
+          </div>
+        </button>
+        <div class="step-divider"></div>
+        <button class="step-nav-item" data-step="3">
+          <span class="step-num">3</span>
+          <div class="step-info">
+            <span class="step-title">Mon Devis Solaire</span>
+            <span class="step-desc">Kit Recommandé & Coût</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- ================= STEP 1: PROJET ================= -->
+      <section class="wizard-step active" id="wizardStep1">
+        <div class="step-card">
+          <div class="step-card-header">
+            <div>
+              <h2><i data-lucide="map-pin"></i> 1. Décrivez votre projet</h2>
+              <p>Choisissez un profil type ou personnalisez votre localisation et vos préférences.</p>
+            </div>
+            <button type="button" class="btn-ghost btn-sm" id="btnResetAll">
+              <i data-lucide="rotate-ccw"></i> Réinitialiser
+            </button>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="presets-container">
+            <label class="section-label"><i data-lucide="sparkles"></i> Préréglages rapides en 1 clic :</label>
+            <div class="presets-grid">
+              <button type="button" class="preset-card" data-preset="household">
+                <span class="preset-icon"><i data-lucide="home"></i></span>
+                <div class="preset-text">
+                  <strong>Ménage Standard</strong>
+                  <small>TV LED, 6 ampoules, ventilateur, chargeurs (5h-8h/j)</small>
+                </div>
+              </button>
+              <button type="button" class="preset-card" data-preset="shop">
+                <span class="preset-icon"><i data-lucide="store"></i></span>
+                <div class="preset-text">
+                  <strong>Boutique & Froid</strong>
+                  <small>Petit congélateur, TV, 4 ampoules, ventilateur, TPE</small>
+                </div>
+              </button>
+              <button type="button" class="preset-card" data-preset="cold">
+                <span class="preset-icon"><i data-lucide="snowflake"></i></span>
+                <div class="preset-text">
+                  <strong>Froid & Alimentation</strong>
+                  <small>Réfrigérateur économe + Congélateur 24/24, éclairage</small>
+                </div>
+              </button>
+              <button type="button" class="preset-card" data-preset="salon">
+                <span class="preset-icon"><i data-lucide="scissors"></i></span>
+                <div class="preset-text">
+                  <strong>Salon de Coiffure</strong>
+                  <small>Tondeuses, TV, musique, ventilateurs, éclairage</small>
+                </div>
+              </button>
+              <button type="button" class="preset-card" data-preset="health">
+                <span class="preset-icon"><i data-lucide="heart-pulse"></i></span>
+                <div class="preset-text">
+                  <strong>Santé & Éducation</strong>
+                  <small>Nébuliseur, éclairage permanent, ordinateurs, routeur</small>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Project Inputs -->
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="inputHousingType"><i data-lucide="building"></i> Type d'utilisation</label>
+              <select id="inputHousingType" class="form-input">
+                <option value="household">Foyer / Ménage familial</option>
+                <option value="shop">Commerce / Boutique / Kiosque</option>
+                <option value="productive_use">Usage productif / Atelier</option>
+                <option value="health_center">Centre de santé / Dispensaire</option>
+                <option value="school">École / Bureau administratif</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="inputCity"><i data-lucide="map-pin"></i> Ville / Emplacement</label>
+              <input type="text" id="inputCity" class="form-input" value="Kinshasa" placeholder="Ex: Kinshasa, Lubumbashi, Dakar, Abidjan...">
+            </div>
+
+            <div class="form-field">
+              <label for="inputPeopleCount"><i data-lucide="users"></i> Nombre d'occupants / Usagers</label>
+              <input type="number" id="inputPeopleCount" class="form-input" min="1" max="100" value="5">
+            </div>
+
+            <div class="form-field">
+              <label for="inputAutonomyHours"><i data-lucide="battery-charging"></i> Autonomie nocturne / coupures (heures)</label>
+              <div class="slider-field">
+                <input type="range" id="sliderAutonomy" min="4" max="24" step="1" value="10" class="form-slider">
+                <span class="slider-val" id="valAutonomy">10 h</span>
+              </div>
+            </div>
+
+            <div class="form-field">
+              <label for="inputBudget"><i data-lucide="wallet"></i> Budget cible indicatif (XAF)</label>
+              <input type="number" id="inputBudget" class="form-input" step="50000" min="100000" value="1500000" placeholder="Ex: 1 500 000">
+            </div>
+
+            <div class="form-field">
+              <label for="inputPreference"><i data-lucide="compass"></i> Priorité du projet</label>
+              <select id="inputPreference" class="form-input">
+                <option value="balanced">Équilibré (Recommandé - Bon rapport qualité/prix)</option>
+                <option value="economy">Économique (Budget optimisé au maximum)</option>
+                <option value="performance">Performance (Marge élevée, composants robustes)</option>
+                <option value="autonomy">Autonomie Max (Grande réserve batterie)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="step-actions">
+            <div></div>
+            <button type="button" class="btn-primary btn-next" data-goto="2">
+              Continuer vers mes équipements <i data-lucide="arrow-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= STEP 2: ÉQUIPEMENTS ================= -->
+      <section class="wizard-step" id="wizardStep2">
+        <div class="step-card">
+          <div class="step-card-header">
+            <div>
+              <h2><i data-lucide="plug-2"></i> 2. Choisissez vos équipements électriques</h2>
+              <p>Ajoutez les appareils que vous souhaitez faire fonctionner avec le système solaire.</p>
+            </div>
+            <div class="filter-controls">
+              <div class="search-box">
+                <i data-lucide="search"></i>
+                <input type="text" id="catalogSearch" placeholder="Rechercher TV, frigo, ampoule, ventilateur...">
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Pills -->
+          <div class="category-pills" id="categoryPills">
+            <button type="button" class="cat-pill active" data-cat="all"><i data-lucide="sparkles"></i> Tous</button>
+            <button type="button" class="cat-pill" data-cat="lighting"><i data-lucide="lightbulb"></i> Éclairage</button>
+            <button type="button" class="cat-pill" data-cat="media"><i data-lucide="tv"></i> Multimédia</button>
+            <button type="button" class="cat-pill" data-cat="cold_chain"><i data-lucide="snowflake"></i> Froid & Aliments</button>
+            <button type="button" class="cat-pill" data-cat="cooling"><i data-lucide="wind"></i> Confort & Ventilo</button>
+            <button type="button" class="cat-pill" data-cat="computing"><i data-lucide="laptop"></i> Informatique</button>
+            <button type="button" class="cat-pill" data-cat="business"><i data-lucide="briefcase"></i> Métiers & Pro</button>
+          </div>
+
+          <!-- Layout Split: Catalog + Live Energy Cart -->
+          <div class="equipment-layout">
+            
+            <!-- Left: Appliance Catalog Grid -->
+            <div class="catalog-area">
+              <div class="appliance-cards-grid" id="catalogCardsGrid">
+                <!-- Dynamically injected cards -->
+              </div>
+
+              <!-- Custom Appliance Add Accordion -->
+              <div class="custom-appliance-box">
+                <details>
+                  <summary><i data-lucide="plus-circle"></i> Ajouter un appareil personnalisé (non listé)</summary>
+                  <div class="custom-form-grid">
+                    <input type="text" id="customName" placeholder="Nom de l'appareil (ex: Mixeur, Scie...)">
+                    <input type="number" id="customPower" placeholder="Puissance en Watts (W)" min="1">
+                    <input type="number" id="customHours" placeholder="Heures / jour (h)" min="0.1" max="24" step="0.5" value="2">
+                    <button type="button" class="btn-secondary" id="btnAddCustom">
+                      <i data-lucide="plus"></i> Ajouter au panier
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <!-- Right: Energy Summary Cart (Sticky) -->
+            <div class="energy-cart-panel">
+              <div class="cart-card">
+                <div class="cart-header">
+                  <h3><i data-lucide="shopping-bag"></i> Mon Panier Énergétique</h3>
+                  <span class="badge-count" id="cartCountBadge">0 appareil</span>
+                </div>
+
+                <!-- Live Metrics Pills -->
+                <div class="live-metrics-grid">
+                  <div class="metric-pill">
+                    <span class="metric-icon"><i data-lucide="zap"></i></span>
+                    <div class="metric-body">
+                      <span class="metric-label">Puissance Crête</span>
+                      <strong class="metric-value" id="livePeakPower">0 W</strong>
+                    </div>
+                  </div>
+                  <div class="metric-pill highlight">
+                    <span class="metric-icon"><i data-lucide="sun"></i></span>
+                    <div class="metric-body">
+                      <span class="metric-label">Énergie Quotidienne</span>
+                      <strong class="metric-value" id="liveDailyEnergy">0 Wh / j</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Selected Appliances List -->
+                <div class="selected-items-list" id="selectedItemsContainer">
+                  <div class="cart-empty-state">
+                    <i data-lucide="info"></i>
+                    <p>Aucun appareil sélectionné.<br>Cliquez sur <strong>+</strong> pour ajouter vos équipements.</p>
+                  </div>
+                </div>
+
+                <!-- Sizing Trigger Action -->
+                <div class="cart-footer">
+                  <button type="button" class="btn-primary btn-calc" id="btnGenerateQuote">
+                    <i data-lucide="calculator"></i>
+                    <span>Calculer mon Devis Solaire</span>
+                    <span class="spinner" aria-hidden="true"></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="step-actions">
+            <button type="button" class="btn-ghost btn-prev" data-goto="1">
+              <i data-lucide="arrow-left"></i> Revenir au projet
+            </button>
+            <button type="button" class="btn-primary btn-next" data-goto="3" id="btnNextToStep3">
+              Voir le Devis Calculé <i data-lucide="arrow-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= STEP 3: DEVIS & RECOMMANDATION ================= -->
+      <section class="wizard-step" id="wizardStep3">
+        <div class="step-card">
+          
+          <!-- Result Placeholder / Waiting State -->
+          <div class="quote-empty-state" id="quoteEmptyState">
+            <div class="empty-icon"><i data-lucide="calculator"></i></div>
+            <h3>Aucun devis généré pour le moment</h3>
+            <p>Veuillez sélectionner au moins un équipement à l'étape 2 puis cliquer sur <strong>Calculer mon Devis Solaire</strong>.</p>
+            <button type="button" class="btn-primary" data-goto="2">
+              <i data-lucide="plug-2"></i> Choisir mes équipements
+            </button>
+          </div>
+
+          <!-- Active Quote Result Display -->
+          <div class="quote-result-container" id="quoteResultContainer" style="display: none;">
+            
+            <div class="quote-header-banner">
+              <div class="banner-title">
+                <span class="badge-success"><i data-lucide="check-circle"></i> Dimensionnement Réussi</span>
+                <h2 id="quoteTitle">Kit Solaire Recommandé</h2>
+                <p id="quoteSubtitle">Dimensionné pour votre profil énergétique à Kinshasa.</p>
+              </div>
+              <div class="banner-meta">
+                <span class="ref-badge">Réf: <strong id="quoteRef">solar-rec-xxx</strong></span>
+                <div class="banner-actions">
+                  <button type="button" class="btn-outline btn-sm" id="btnPrintQuote">
+                    <i data-lucide="printer"></i> Imprimer / PDF
+                  </button>
+                  <button type="button" class="btn-success btn-sm" id="btnOpenContactModal">
+                    <i data-lucide="phone-call"></i> Être rappelé par un conseiller
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key Sizing Cards Grid -->
+            <div class="sizing-cards-grid">
+              
+              <!-- Card 1: Panneaux -->
+              <div class="sizing-card card-pv">
+                <div class="card-top">
+                  <div class="card-icon"><i data-lucide="sun"></i></div>
+                  <span class="card-tag">Production Solaire</span>
+                </div>
+                <div class="card-main">
+                  <div class="big-metric" id="cardPvCount">2 Panneaux</div>
+                  <div class="sub-metric" id="cardPvPower">de 350 Wc (Total 700 Wc)</div>
+                </div>
+                <div class="card-footer-info">
+                  <span><i data-lucide="shield-check"></i> Ensoleillement utile : 4.5h/j</span>
+                </div>
+              </div>
+
+              <!-- Card 2: Batteries -->
+              <div class="sizing-card card-battery">
+                <div class="card-top">
+                  <div class="card-icon"><i data-lucide="battery"></i></div>
+                  <span class="card-tag">Stockage & Autonomie</span>
+                </div>
+                <div class="card-main">
+                  <div class="big-metric" id="cardBatteryCount">1 Batterie LiFePO4</div>
+                  <div class="sub-metric" id="cardBatteryCap">1 280 Wh utiles</div>
+                </div>
+                <div class="card-footer-info">
+                  <span><i data-lucide="clock"></i> Autonomie garantie : <strong id="cardAutonomyHours">10h</strong></span>
+                </div>
+              </div>
+
+              <!-- Card 3: Onduleur & MPPT -->
+              <div class="sizing-card card-inverter">
+                <div class="card-top">
+                  <div class="card-icon"><i data-lucide="zap"></i></div>
+                  <span class="card-tag">Conversion & Régulation</span>
+                </div>
+                <div class="card-main">
+                  <div class="big-metric" id="cardInverterPower">Onduleur 600 W</div>
+                  <div class="sub-metric" id="cardControllerInfo">Régulateur MPPT 40A inclus</div>
+                </div>
+                <div class="card-footer-info">
+                  <span><i data-lucide="gauge"></i> Pic admissible : <strong id="cardInverterSurge">1200 W</strong></span>
+                </div>
+              </div>
+
+              <!-- Card 4: Investissement & Budget -->
+              <div class="sizing-card card-price">
+                <div class="card-top">
+                  <div class="card-icon"><i data-lucide="receipt"></i></div>
+                  <span class="card-tag" id="cardBudgetMatchTag">Adéquation Budget</span>
+                </div>
+                <div class="card-main">
+                  <div class="big-metric price-highlight" id="cardTotalPrice">1 420 000 XAF</div>
+                  <div class="sub-metric" id="cardPaygEstimate">Soit env. 59 000 XAF / mois en PAYG</div>
+                </div>
+                <div class="card-footer-info">
+                  <span><i data-lucide="tag"></i> Estimation matériel & accessoires</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Detailed Technical & Financial Breakdown -->
+            <div class="details-section-grid">
+              
+              <!-- Left: Components Table -->
+              <div class="detail-box">
+                <div class="detail-box-header">
+                  <h3><i data-lucide="layers"></i> Détail des équipements inclus dans ce devis</h3>
+                </div>
+                <div class="table-responsive">
+                  <table class="quote-table">
+                    <thead>
+                      <tr>
+                        <th>Équipement</th>
+                        <th>Quantité</th>
+                        <th>Prix Unitaire</th>
+                        <th>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody id="quoteTableBody">
+                      <!-- Dynamically filled -->
+                    </tbody>
+                    <tfoot>
+                      <tr class="total-row">
+                        <td colspan="3"><strong>Total Estimé du Kit Solaire</strong></td>
+                        <td id="quoteTableTotal"><strong>0 XAF</strong></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Right: Energy Audit Summary -->
+              <div class="detail-box">
+                <div class="detail-box-header">
+                  <h3><i data-lucide="activity"></i> Synthèse de votre bilan énergétique</h3>
+                </div>
+                <div class="audit-summary-list">
+                  <div class="audit-row">
+                    <span>Consommation brute calculée :</span>
+                    <strong id="auditRawEnergy">0 Wh / jour</strong>
+                  </div>
+                  <div class="audit-row">
+                    <span>Consommation avec marge sécurité (+20%) :</span>
+                    <strong id="auditAdjustedEnergy">0 Wh / jour</strong>
+                  </div>
+                  <div class="audit-row">
+                    <span>Puissance simultanée attendue :</span>
+                    <strong id="auditPeakPower">0 W</strong>
+                  </div>
+                  <div class="audit-row">
+                    <span>Énergie solaire annuelle estimée :</span>
+                    <strong id="auditAnnualEnergy">0 kWh / an</strong>
+                  </div>
+                  <div class="audit-row highlight-row">
+                    <span>Émissions CO₂ évitées (estimé) :</span>
+                    <strong id="auditCo2Saved">0 kg / an</strong>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- ================= AI EXPLANATION & INTERACTIVE Q&A ================= -->
+            <div class="ai-explanation-box">
+              <div class="ai-header">
+                <div class="ai-avatar"><i data-lucide="bot"></i></div>
+                <div>
+                  <h3>Explication & Accompagnement IA DJUA Advisor</h3>
+                  <p>Vulgarisation transparente basée sur les calculs réels de votre devis.</p>
+                </div>
+                <div class="ai-badge" id="aiModelBadge"><i data-lucide="sparkles"></i> IA Contextuelle</div>
+              </div>
+
+              <div class="ai-content-body" id="aiExplanationBody">
+                <p>Chargement de l'explication personnalisée...</p>
+              </div>
+
+              <!-- Quick Follow-up Question Chips -->
+              <div class="ai-qa-section">
+                <label class="qa-label"><i data-lucide="message-square"></i> Posez une question sur ce devis :</label>
+                <div class="qa-chips-grid">
+                  <button type="button" class="qa-chip" data-q="Pourquoi me conseillez-vous ce nombre de panneaux solaires ?">
+                    <i data-lucide="sun"></i> Pourquoi ce nombre de panneaux ?
+                  </button>
+                  <button type="button" class="qa-chip" data-q="Quelle sera mon autonomie la nuit et les jours de pluie ?">
+                    <i data-lucide="cloud-rain"></i> Autonomie la nuit et sous la pluie ?
+                  </button>
+                  <button type="button" class="qa-chip" data-q="Puis-je brancher un congélateur ou un fer à repasser en plus ?">
+                    <i data-lucide="plug"></i> Puis-je ajouter d'autres appareils ?
+                  </button>
+                  <button type="button" class="qa-chip" data-q="Comment fonctionne le paiement échelonné Pay-As-You-Go ?">
+                    <i data-lucide="credit-card"></i> Comment fonctionne le paiement PAYG ?
+                  </button>
+                </div>
+
+                <!-- Custom Question Form -->
+                <form class="qa-custom-form" id="formAskAdvisor">
+                  <input type="text" id="inputCustomQuestion" placeholder="Ex: Que se passe-t-il si j'utilise la TV 8h au lieu de 5h ?" autocomplete="off">
+                  <button type="submit" class="btn-primary btn-sm" id="btnSubmitQuestion">
+                    <i data-lucide="send"></i> Demander à l'IA
+                  </button>
+                </form>
+                
+                <!-- Dynamic AI Answer Bubble -->
+                <div class="ai-answer-card" id="aiAnswerCard" style="display: none;">
+                  <div class="answer-header">
+                    <i data-lucide="sparkles"></i> <strong>Réponse de l'Advisor</strong>
+                  </div>
+                  <div class="answer-text" id="aiAnswerText"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Step 3 Action Footer -->
+            <div class="step-actions">
+              <button type="button" class="btn-ghost btn-prev" data-goto="2">
+                <i data-lucide="arrow-left"></i> Modifier les équipements
+              </button>
+              <button type="button" class="btn-success" id="btnRequestCallback">
+                <i data-lucide="check"></i> Valider et demander un contact commercial
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ==============================================
+         MODE 2: ASSISTANT CONVERSATIONNEL IA
+         ============================================== -->
+    <div id="viewChatAdvisor" class="view-panel">
+      <div class="chat-container-card">
+        
+        <div class="chat-header">
+          <div class="chat-header-info">
+            <span class="chat-avatar"><i data-lucide="bot"></i></span>
+            <div>
+              <h3>Conseiller Solaire Interactif</h3>
+              <p>Parlez librement de vos besoins. L'IA extrait automatiquement vos appareils et prépare votre devis.</p>
+            </div>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" id="btnClearChat">
+            <i data-lucide="trash-2"></i> Effacer l'échange
+          </button>
+        </div>
+
+        <div class="chat-messages-area" id="chatMessagesArea">
+          <div class="chat-bubble assistant">
+            <div class="bubble-avatar"><i data-lucide="bot"></i></div>
+            <div class="bubble-text">
+              <p>Bonjour ! Je suis <strong>DJUA AI Solar Advisor</strong>.</p>
+              <p>Décrivez-moi simplement votre situation et les appareils que vous souhaitez alimenter (par exemple : <em>"J'ai une boutique à Lubumbashi avec 1 petit congélateur, 6 ampoules et une TV 32 pouces avec 10h d'autonomie"</em>).</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form class="chat-input-bar" id="chatForm">
+          <input type="text" id="chatInputText" placeholder="Écrivez votre message ici (ex: J'ai 8 ampoules, une télévision et un frigo...)" autocomplete="off">
+          <button type="submit" class="btn-primary" id="btnSendChat">
+            <i data-lucide="send"></i> Envoyer
+          </button>
+        </form>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==============================================
+       CONTACT / CALLBACK REQUEST MODAL
+       ============================================== -->
+  <div class="modal-backdrop" id="contactModal" style="display: none;">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div>
+          <h3><i data-lucide="phone-call"></i> Être contacté par un conseiller Orange Energy</h3>
+          <p>Transmettez votre devis à notre équipe technique pour finaliser votre kit.</p>
+        </div>
+        <button type="button" class="modal-close" id="btnCloseModal"><i data-lucide="x"></i></button>
+      </div>
+
+      <form id="formContactRequest" class="modal-form">
+        <input type="hidden" id="modalRecommendationId" value="">
+        
+        <div class="modal-form-grid">
+          <div class="form-field">
+            <label for="contactName"><i data-lucide="user"></i> Votre Nom Complet *</label>
+            <input type="text" id="contactName" class="form-input" required placeholder="Ex: Jean Mukendi">
+          </div>
+
+          <div class="form-field">
+            <label for="contactPhone"><i data-lucide="phone"></i> Numéro de Téléphone (Mobile Money) *</label>
+            <input type="tel" id="contactPhone" class="form-input" required placeholder="Ex: +243 81 234 5678">
+          </div>
+
+          <div class="form-field">
+            <label for="contactEmail"><i data-lucide="mail"></i> Adresse Email (Optionnel)</label>
+            <input type="email" id="contactEmail" class="form-input" placeholder="nom@exemple.com">
+          </div>
+
+          <div class="form-field">
+            <label for="contactMessage"><i data-lucide="message-square"></i> Instructions particulières</label>
+            <textarea id="contactMessage" class="form-input" rows="3" placeholder="Ex: Merci de me contacter le matin. Souhaite une pose rapide."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-ghost" id="btnCancelModal">Annuler</button>
+          <button type="submit" class="btn-success" id="btnSubmitContact">
+            <i data-lucide="send"></i> Envoyer ma demande
+          </button>
+        </div>
+      </form>
+
+      <div class="modal-success-state" id="modalSuccessState" style="display: none;">
+        <div class="success-icon"><i data-lucide="check-circle"></i></div>
+        <h3>Demande envoyée avec succès !</h3>
+        <p>Un conseiller technique Orange Energy vous recontactera sous 24h ouvrées.</p>
+        <button type="button" class="btn-primary" id="btnFinishModal">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/solar_advisor.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
+

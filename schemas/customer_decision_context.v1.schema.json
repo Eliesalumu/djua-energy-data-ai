@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "customer_decision_context.v1",
+  "description": "Snapshot Backend -> IA pour evaluer une decision client multidimensionnelle. Le backend garantit l'identite et les jointures metier.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "request_id", "as_of", "identity"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "request_id": {"type": "string"},
+    "as_of": {"type": "string"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kit_id", "device_id", "resolution_status"],
+      "properties": {
+        "client_id": {"type": ["string", "null"]},
+        "kit_id": {"type": "string"},
+        "device_id": {"type": "string"},
+        "installation_id": {"type": ["string", "null"]},
+        "contract_id": {"type": ["string", "null"]},
+        "assignment_id": {"type": ["string", "null"]},
+        "resolution_status": {
+          "type": "string",
+          "enum": ["resolved", "unresolved", "ambiguous", "conflict", "stale", "partial"]
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "event_time": {"type": "string"},
+        "received_at": {"type": ["string", "null"]},
+        "battery_voltage_v": {"type": ["number", "null"]},
+        "battery_temperature_c": {"type": ["number", "null"]},
+        "state_of_charge_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "state_of_health_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "solar_power_w": {"type": ["number", "null"]},
+        "load_power_w": {"type": ["number", "null"]},
+        "network_quality": {"type": ["string", "number", "null"]},
+        "connection_status": {"type": ["string", "null"]}
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "region": {"type": ["string", "null"]},
+        "season": {"type": ["string", "null"]},
+        "day_period": {"type": ["string", "null"]},
+        "ambient_temperature_c": {"type": ["number", "null"]}
+      }
+    },
+    "payments": {
+      "type": "array",
+      "description": "Historique brut des paiements envoye par le backend. Les features payment sont calculees cote IA/Data.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["status"],
+        "properties": {
+          "payment_id": {"type": ["string", "null"]},
+          "client_id": {"type": ["string", "null"]},
+          "contract_id": {"type": ["string", "null"]},
+          "due_date": {"type": ["string", "null"]},
+          "paid_at": {"type": ["string", "null"]},
+          "date": {"type": ["string", "null"]},
+          "amount_due": {"type": ["number", "null"], "minimum": 0},
+          "amount_paid": {"type": ["number", "null"], "minimum": 0},
+          "status": {"type": "string"},
+          "method": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "raw_payments": {
+      "type": "array",
+      "description": "Copie auditable des paiements bruts apres normalisation du snapshot IA.",
+      "items": {"type": "object", "additionalProperties": true}
+    },
+    "payment": {
+      "type": "object",
+      "description": "Features paiement calculees cote IA/Data depuis payments[].",
+      "additionalProperties": true
+    },
+    "customer": {"type": "object", "additionalProperties": true},
+    "contract": {"type": "object", "additionalProperties": true},
+    "kit_intelligence": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "maintenance_risk": {"type": ["number", "null"], "minimum": 0},
+        "security_risk": {"type": ["number", "null"], "minimum": 0},
+        "battery_health": {"type": ["string", "null"]},
+        "critical_anomaly": {"type": ["boolean", "null"]},
+        "maintenance": {"type": "object", "additionalProperties": true},
+        "security": {"type": "object", "additionalProperties": true},
+        "operational_risk": {"type": "object", "additionalProperties": true},
+        "reason_codes": {"type": "array", "items": {"type": "string"}},
+        "model_versions": {"type": "object", "additionalProperties": true},
+        "source_prediction_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "data_quality": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "identity_resolved": {"type": ["boolean", "null"]},
+        "telemetry_age_seconds": {"type": ["integer", "null"], "minimum": 0},
+        "missing_features": {"type": "array", "items": {"type": "string"}},
+        "warnings": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

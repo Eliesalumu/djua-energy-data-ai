@@ -24,12 +24,22 @@ class LocalInferenceEngine:
         probabilities = self.maintenance_model.predict_proba(df[self.maintenance_features])[:, 1]
         predictions = self.maintenance_model.predict(df[self.maintenance_features])
         latest_index = -1
-        prediction = predictions[latest_index]
+        latest = records[-1]
+        model_probability = float(probabilities[latest_index])
+        rule_probability = 0.0
+        if float(latest.get("battery_voltage_v", 99) or 99) <= 12.1:
+            rule_probability = max(rule_probability, 0.85)
+        if float(latest.get("state_of_health_pct", 100) or 100) <= 75:
+            rule_probability = max(rule_probability, 0.85)
+        if latest.get("overload_detected") or latest.get("abnormal_consumption_detected"):
+            rule_probability = max(rule_probability, 0.7)
+        probability = max(model_probability, rule_probability)
+        prediction = 1 if probability >= 0.65 else int(predictions[latest_index])
         return {
-            "technical_risk_probability": round(float(probabilities[latest_index]), 3),
+            "technical_risk_probability": round(probability, 3),
             "risk_level": "high" if prediction == 1 else "normal",
             "suspected_component": "battery" if prediction == 1 else "none",
-            "top_factors": ["battery_voltage_trend", "battery_temp_trend"],
+            "top_factors": ["battery_voltage_trend", "battery_voltage_volatility"],
             "rule_warnings": ["synthetic-data-only"],
             "recommended_action": "inspect device", 
             "model_version": self.metadata["maintenance"]["model_version"],
@@ -48,6 +58,10 @@ class LocalInferenceEngine:
             predictions = self.security_model.predict(df[self.security_features])
             probability = float(probabilities[-1]) if len(probabilities) else 0.0
             prediction = int(predictions[-1]) if len(predictions) else 0
+        latest = records[-1]
+        if latest.get("geofence_status") == "outside" or latest.get("enclosure_opened"):
+            probability = max(probability, 0.9)
+            prediction = 1
         return {
             "suspicious_activity_score": round(probability, 3),
             "risk_level": "high" if prediction == 1 else "normal",

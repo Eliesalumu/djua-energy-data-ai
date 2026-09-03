@@ -34,7 +34,6 @@ def train_models(output_dir: str | Path | None = None) -> dict[str, Any]:
     maintenance_df = build_maintenance_features(records)
     maintenance_df["target_technical_anomaly"] = dataset["label_maintenance"].astype(int).to_numpy()
     maintenance_df["target_battery_degradation"] = (maintenance_df["soc_drop"] < -2).astype(int)
-    maintenance_df["target_overheating"] = (maintenance_df["battery_temp_trend"] > 3).astype(int)
 
     security_df = build_security_features(records)
     security_df["target_suspicious_movement"] = (security_df["distance_to_installation"] > 40).astype(int)
@@ -45,50 +44,28 @@ def train_models(output_dir: str | Path | None = None) -> dict[str, Any]:
         "battery_voltage_trend",
         "battery_voltage_volatility",
         "soc_drop",
-        "battery_temp_trend",
-        "max_battery_temp",
         "charge_duration_seconds",
         "discharge_duration_seconds",
         "solar_load_ratio",
         "health_delta",
         "error_count",
-        "reset_frequency",
-        "sensor_availability",
-        "connectivity_gap",
         "device_temp_internal",
         "solar_controller_instability",
         "overload_signal",
-        "short_circuit_signal",
         "electrical_stability",
         "ambient_temperature",
         "humidity_pct",
-        "solar_irradiance",
-        "battery_age_months",
         "night_operation",
-        "usage_intensity",
-        "network_quality_score",
         "season_rainy",
     ]
     security_features = [
-        "distance_to_installation",
         "geofence_exit",
         "movement_speed",
-        "movement_duration",
-        "movement_events",
         "enclosure_opened",
-        "tamper_events",
-        "impact_or_tilt",
         "movement_then_gap",
         "gap_after_opening",
-        "device_silence_duration",
-        "identity_mismatch",
         "sim_or_operator_change",
-        "post_security_reset",
-        "security_sensor_missing",
-        "abnormal_usage",
         "repeated_suspicious_events",
-        "security_risk_zone_score",
-        "network_quality_score",
         "mobile_installation",
         "night_operation",
     ]

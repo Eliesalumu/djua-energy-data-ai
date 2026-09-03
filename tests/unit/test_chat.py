@@ -1,7 +1,7 @@
 import pandas as pd
 
 from djua_energy.chat.context_builder import build_device_context, extract_device_query
-from djua_energy.chat.service import DjuaChatService
+from djua_energy.chat.service import DjuaChatService, OpenAIResponsesClient
 
 
 class _NoLlmClient:
@@ -39,3 +39,13 @@ def test_chat_service_fallback_answers_from_context_without_llm() -> None:
     assert "Action recommandee" in result.answer
     assert result.sources
 
+
+def test_openai_client_prefers_project_model_env(monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("DJUA_OPENAI_MODEL", "gpt-5-mini")
+    monkeypatch.setenv("OPENAI_MODEL", "older-model")
+
+    client = OpenAIResponsesClient()
+
+    assert client.available is True
+    assert client.model == "gpt-5-mini"

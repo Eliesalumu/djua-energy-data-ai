@@ -53,7 +53,7 @@ class OpenAIResponsesClient:
         timeout_seconds: int = 45,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        self.model = model or os.getenv("DJUA_OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
         self.timeout_seconds = timeout_seconds
 
     @property
@@ -145,8 +145,7 @@ def _fallback_device_answer(context: dict[str, Any]) -> str:
         f"Le device {context['device_id']} est dans un etat {context['global_status']}. "
         f"L'IA a detecte : {cases}. La connectivite descend jusqu'a un silence de "
         f"{indicators['max_connectivity_gap_seconds']} secondes. La batterie, agee de "
-        f"{indicators['battery_age_months']} mois, monte jusqu'a "
-        f"{indicators['max_battery_temperature_c']} C, descend jusqu'a "
+        f"{indicators['battery_age_months']} mois, descend jusqu'a "
         f"{indicators['min_battery_voltage_v']} V et atteint un minimum de charge de "
         f"{indicators['min_state_of_charge_pct']} %. La production solaire descend jusqu'a "
         f"{indicators['min_solar_power_w']} W.{security_sentence} "

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from djua_energy.pipeline.contracts import validate_payload
+from djua_energy.pipeline.contracts import validate_payload, validate_prediction_payload
 
 
 @dataclass(frozen=True)
@@ -24,12 +24,28 @@ def validate_record(record: dict[str, Any]) -> RecordValidation:
     )
 
 
+def validate_prediction_record(record: dict[str, Any]) -> RecordValidation:
+    result = validate_prediction_payload(record)
+    return RecordValidation(
+        record=record,
+        valid=bool(result["valid"]),
+        errors=list(result.get("errors", [])),
+    )
+
+
 def validate_records(records: list[dict[str, Any]]) -> list[RecordValidation]:
     return [validate_record(record) for record in records]
 
 
 def split_valid_invalid(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[RecordValidation]]:
     validations = validate_records(records)
+    valid_records = [item.record for item in validations if item.valid]
+    invalid_records = [item for item in validations if not item.valid]
+    return valid_records, invalid_records
+
+
+def split_valid_invalid_prediction(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[RecordValidation]]:
+    validations = [validate_prediction_record(record) for record in records]
     valid_records = [item.record for item in validations if item.valid]
     invalid_records = [item for item in validations if not item.valid]
     return valid_records, invalid_records

@@ -1,1 +1,24 @@
-{"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "contract.v1", "description": "Placeholder pour les données contractuelles futures"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "contract.v1",
+  "description": "Contrat minimal pour rattacher un client, un kit et une offre dans les decisions IA.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contract_id", "customer_id", "kit_id", "status", "valid_from"],
+  "properties": {
+    "contract_id": {"type": "string"},
+    "customer_id": {"type": "string"},
+    "kit_id": {"type": "string"},
+    "assignment_id": {"type": ["string", "null"]},
+    "offer_name": {"type": ["string", "null"]},
+    "status": {
+      "type": "string",
+      "enum": ["active", "suspended", "closed", "pending", "unknown"]
+    },
+    "periodic_amount_usd": {"type": ["number", "null"], "minimum": 0},
+    "currency": {"type": ["string", "null"]},
+    "valid_from": {"type": "string"},
+    "valid_to": {"type": ["string", "null"]},
+    "source": {"type": "object", "additionalProperties": true}
+  }
+}

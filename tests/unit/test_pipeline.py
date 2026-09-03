@@ -1,4 +1,4 @@
-from djua_energy.pipeline.contracts import validate_payload
+from djua_energy.pipeline.contracts import REQUIRED_FIELDS, validate_payload
 from djua_energy.pipeline.synthetic_data import SyntheticTelemetryGenerator, generate_mvp_dataset
 from djua_energy.pipeline.features import build_maintenance_features, build_security_features
 from djua_energy.alerting.prioritization import prioritize_predictions
@@ -25,6 +25,53 @@ def test_validation_accepts_valid_telemetry() -> None:
     }
     result = validate_payload(payload)
     assert result["valid"] is True
+
+
+def test_validation_accepts_backend_critical_telemetry_fields() -> None:
+    critical_fields = {
+        "battery_age_months": 24,
+        "distance_from_installation_m": 120.5,
+        "movement_detected": True,
+        "tamper_detected": True,
+        "connection_status": "disconnected",
+        "network_quality": "weak",
+        "connectivity_gap_seconds": 900,
+        "security_risk_zone": "high",
+        "panel_temperature_c": 58.2,
+        "solar_irradiance_w_m2": 720,
+        "gps_accuracy_m": 6.5,
+        "movement_duration_seconds": 300,
+        "movement_event_count": 4,
+        "impact_detected": True,
+        "identity_mismatch_detected": True,
+        "short_circuit_detected": False,
+        "battery_temperature_c": 46.1,
+        "reset_count": 3,
+        "sensor_failure_detected": False,
+        "device_error_code": "NONE",
+        "usage_profile": "intensive",
+    }
+    payload = {
+        "message_id": "m-critical-fields",
+        "schema_version": "1.0",
+        "message_type": "telemetry",
+        "device_id": "device-1",
+        "kit_id": "kit-1",
+        "serial_number": "SN-001",
+        "event_time": "1",
+        "sequence_number": 1,
+        "battery_voltage_v": 12.6,
+        "battery_current_a": 1.1,
+        "battery_power_w": 13.9,
+        "state_of_charge_pct": 70.0,
+        "state_of_health_pct": 88.0,
+        **critical_fields,
+    }
+
+    result = validate_payload(payload)
+
+    assert result["valid"] is True
+    assert set(critical_fields).issubset(set(REQUIRED_FIELDS["telemetry"]["optional"]))
 
 
 def test_generator_creates_records() -> None:

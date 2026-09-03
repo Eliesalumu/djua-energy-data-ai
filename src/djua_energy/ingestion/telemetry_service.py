@@ -9,7 +9,8 @@ from djua_energy.alerting.service import AlertDecision, build_alert_decision
 from djua_energy.database.realtime_store import RealtimeTelemetryStore
 from djua_energy.ingestion.idempotency import InMemoryIdempotencyStore
 from djua_energy.ingestion.quarantine import InMemoryQuarantineStore
-from djua_energy.ingestion.validation import split_valid_invalid
+from djua_energy.ingestion.validation import split_valid_invalid_prediction
+from djua_energy.kit_intelligence.service import build_kit_intelligence
 from djua_energy.observability.audit import InMemoryAuditLog
 from djua_energy.observability.metrics import InMemoryMetrics
 from djua_energy.pipeline.features import build_maintenance_features, build_security_features
@@ -42,7 +43,7 @@ class TelemetryIngestionService:
         self.metrics.increment("ingestion.windows_received")
         self.metrics.increment("ingestion.records_received", len(records))
 
-        valid_records, invalid_records = split_valid_invalid(records)
+        valid_records, invalid_records = split_valid_invalid_prediction(records)
         for invalid in invalid_records:
             self.quarantine_store.add(invalid.record, invalid.errors)
         if invalid_records:
@@ -80,9 +81,17 @@ class TelemetryIngestionService:
             device_id=device_id,
             maintenance_prediction=maintenance_prediction,
             security_prediction=security_prediction,
+            kit_id=new_records[-1].get("kit_id"),
+            event_time=str(new_records[-1].get("event_time")),
         )
         alert_payload = asdict(alert_decision)
         feature_snapshot = self._build_feature_snapshot(window_records)
+        kit_intelligence = build_kit_intelligence(
+            records=window_records,
+            inference_engine=self.inference_engine,
+            maintenance_prediction=maintenance_prediction,
+            security_prediction=security_prediction,
+        )
         stored_prediction = None
         if self.realtime_store:
             stored_prediction = self.realtime_store.save_prediction(
@@ -116,6 +125,7 @@ class TelemetryIngestionService:
             "quarantined_records": len(invalid_records),
             "duplicate_records": len(duplicate_records),
             "alert": alert_payload,
+            "kit_intelligence": kit_intelligence,
             "feature_snapshot": feature_snapshot,
             "stored_prediction": stored_prediction,
             "metrics": self.metrics.snapshot(),

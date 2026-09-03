@@ -16,7 +16,6 @@ REQUIRED_FIELDS = {
             "battery_voltage_v",
             "battery_current_a",
             "battery_power_w",
-            "battery_temperature_c",
             "state_of_charge_pct",
             "state_of_health_pct",
         ],
@@ -26,31 +25,31 @@ REQUIRED_FIELDS = {
             "day_period",
             "ambient_temperature_c",
             "humidity_pct",
-            "solar_irradiance_w_m2",
-            "network_quality",
             "installation_type",
-            "battery_age_months",
-            "usage_profile",
-            "security_risk_zone",
+            "charge_duration_seconds",
+            "discharge_duration_seconds",
             "solar_voltage_v",
             "solar_current_a",
             "solar_power_w",
             "energy_generated_wh",
-            "panel_temperature_c",
+            "solar_error_code",
             "load_voltage_v",
             "load_current_a",
             "load_power_w",
             "energy_consumed_wh",
+            "overload_detected",
             "latitude",
             "longitude",
-            "gps_accuracy_m",
-            "movement_detected",
-            "tamper_detected",
+            "geofence_status",
+            "speed_mps",
             "enclosure_opened",
             "connectivity_type",
-            "connection_status",
+            "network_operator",
             "device_temperature_c",
+            "missing_measurement_count",
             "sensor_status",
+            "abnormal_consumption_detected",
+            "battery_error_code",
         ],
     },
     "location": {
@@ -142,3 +141,17 @@ def validate_payload(payload: dict[str, Any]) -> dict[str, Any]:
             errors.append("state_of_charge_pct must be in [0, 100]")
 
     return {"valid": not errors, "errors": errors}
+
+
+def validate_prediction_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate records that will be sent to maintenance/security models.
+
+    Other message types can be useful for ingestion, but the current local
+    models require a complete telemetry record.
+    """
+
+    validation = validate_payload(payload)
+    errors = list(validation.get("errors", []))
+    if payload.get("message_type") != "telemetry":
+        errors.append("message_type must be telemetry for maintenance/security prediction")
+    return {"valid": bool(validation["valid"]) and not errors, "errors": errors}

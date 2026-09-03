@@ -11,4 +11,5 @@ dependencies = [
   "scikit-learn>=1.4.0",
   "joblib>=1.4.0",
   "pytest>=8.3.0",
+  "openai>=2.0.0",
 ]

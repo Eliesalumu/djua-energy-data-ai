@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://djua.energy/schemas/backend_ai_prediction_scoring_request.v1.schema.json",
+  "title": "backend_ai_prediction_scoring_request.v1",
+  "description": "Contrat reel Backend -> IA/Data pour POST /v1/customer/evaluate-from-telemetry apres reentrainement. Il garde uniquement les champs requis par l'API ou lus par les features/rules actuellement chargees.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "as_of", "identity", "records", "payments", "customer", "contract", "data_quality"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "request_id": {"type": "string", "minLength": 1},
+    "as_of": {"$ref": "#/$defs/dateTimeLike"},
+    "identity": {"$ref": "#/$defs/identity"},
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Fenetre recente du meme device. Recommande: 3 a 24 records pour stabiliser les tendances.",
+      "items": {"$ref": "#/$defs/telemetryRecord"}
+    },
+    "payments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/paymentRecord"}
+    },
+    "customer": {"$ref": "#/$defs/customer"},
+    "contract": {"$ref": "#/$defs/contract"},
+    "context": {"$ref": "#/$defs/operationalContext"},
+    "payment": {
+      "$ref": "#/$defs/paymentFeatures",
+      "description": "Optionnel. Peut rester {} avec /v1/customer/evaluate-from-telemetry, car payments[] est recalcule cote IA."
+    },
+    "kit_intelligence": {
+      "$ref": "#/$defs/kitIntelligenceOverride",
+      "description": "Optionnel. Peut rester {} avec /v1/customer/evaluate-from-telemetry, car records[] produit la prediction kit."
+    },
+    "data_quality": {"$ref": "#/$defs/dataQuality"}
+  },
+  "$defs": {
+    "dateTimeLike": {
+      "oneOf": [
+        {"type": "string", "format": "date-time"},
+        {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
+        {"type": "number"}
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_id", "kit_id", "device_id", "contract_id", "assignment_id", "resolution_status"],
+      "properties": {
+        "client_id": {"type": "string", "minLength": 1},
+        "kit_id": {"type": "string", "minLength": 1},
+        "device_id": {"type": "string", "minLength": 1},
+        "installation_id": {"type": ["string", "null"]},
+        "contract_id": {"type": "string", "minLength": 1},
+        "assignment_id": {"type": "string", "minLength": 1},
+        "resolution_status": {"type": "string", "enum": ["resolved", "unresolved", "ambiguous", "conflict", "stale", "partial"]}
+      }
+    },
+    "telemetryRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "message_id",
+        "schema_version",
+        "message_type",
+        "device_id",
+        "kit_id",
+        "serial_number",
+        "event_time",
+        "sequence_number",
+        "battery_voltage_v",
+        "battery_current_a",
+        "battery_power_w",
+        "state_of_charge_pct",
+        "state_of_health_pct"
+      ],
+      "properties": {
+        "message_id": {"type": "string", "minLength": 1},
+        "schema_version": {"type": "string", "const": "1.0"},
+        "message_type": {"type": "string", "const": "telemetry"},
+        "device_id": {"type": "string", "minLength": 1},
+        "kit_id": {"type": "string", "minLength": 1},
+        "serial_number": {"type": "string", "minLength": 1},
+        "event_time": {"$ref": "#/$defs/dateTimeLike"},
+        "sequence_number": {"type": "integer", "minimum": 1},
+        "battery_voltage_v": {"type": "number", "exclusiveMinimum": 0},
+        "battery_current_a": {"type": "number"},
+        "battery_power_w": {"type": "number"},
+        "state_of_charge_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "state_of_health_pct": {"type": "number", "minimum": 0, "maximum": 100},
+        "charge_duration_seconds": {"type": ["number", "null"], "minimum": 0},
+        "discharge_duration_seconds": {"type": ["number", "null"], "minimum": 0},
+        "solar_power_w": {"type": ["number", "null"]},
+        "load_power_w": {"type": ["number", "null"]},
+        "battery_error_code": {"type": ["string", "null"]},
+        "device_temperature_c": {"type": ["number", "null"]},
+        "solar_error_code": {"type": ["string", "null"]},
+        "overload_detected": {"type": ["boolean", "null"]},
+        "abnormal_consumption_detected": {"type": ["boolean", "null"]},
+        "ambient_temperature_c": {"type": ["number", "null"]},
+        "humidity_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100},
+        "day_period": {"type": ["string", "null"], "enum": ["day", "night", null]},
+        "season": {"type": ["string", "null"], "enum": ["dry", "rainy", "harmattan", "transition", null]},
+        "geofence_status": {"type": ["string", "null"], "enum": ["inside", "outside", "unknown", null]},
+        "speed_mps": {"type": ["number", "null"], "minimum": 0},
+        "enclosure_opened": {"type": ["boolean", "null"]},
+        "network_operator": {"type": ["string", "null"]},
+        "missing_measurement_count": {"type": ["integer", "null"], "minimum": 0},
+        "installation_type": {"type": ["string", "null"], "enum": ["household_rooftop", "ground_mount", "kiosk_shared", "mobile_asset", null]}
+      }
+    },
+    "paymentRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "payment_id": {"type": ["string", "null"]},
+        "client_id": {"type": ["string", "null"]},
+        "contract_id": {"type": ["string", "null"]},
+        "due_date": {"oneOf": [{"$ref": "#/$defs/dateTimeLike"}, {"type": "null"}]},
+        "paid_at": {"oneOf": [{"$ref": "#/$defs/dateTimeLike"}, {"type": "null"}]},
+        "date": {"oneOf": [{"$ref": "#/$defs/dateTimeLike"}, {"type": "null"}]},
+        "payment_date": {"oneOf": [{"$ref": "#/$defs/dateTimeLike"}, {"type": "null"}]},
+        "created_at": {"oneOf": [{"$ref": "#/$defs/dateTimeLike"}, {"type": "null"}]},
+        "amount_due": {"type": ["number", "null"], "minimum": 0},
+        "amount_paid": {"type": ["number", "null"], "minimum": 0},
+        "amountUSD": {"type": ["number", "null"], "minimum": 0},
+        "amount_usd": {"type": ["number", "null"], "minimum": 0},
+        "days_late": {"type": ["number", "null"], "minimum": 0},
+        "status": {
+          "type": "string",
+          "enum": ["paid", "completed", "success", "successful", "settled", "late", "missed", "pending", "overdue", "unpaid", "failed", "rejected", "cancelled", "canceled"]
+        },
+        "method": {"type": ["string", "null"]}
+      }
+    },
+    "customer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenure_months", "active_contracts", "customer_segment"],
+      "properties": {
+        "tenure_months": {"type": "number", "minimum": 0},
+        "active_contracts": {"type": "number", "minimum": 0},
+        "customer_segment": {"type": "string", "enum": ["residential", "household", "business", "enterprise", "priority", "community"]}
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_id", "status", "periodic_amount_usd"],
+      "properties": {
+        "contract_id": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "enum": ["active", "suspended", "closed", "pending", "unknown"]},
+        "periodic_amount_usd": {"type": "number", "minimum": 0},
+        "monthly_fee_usd": {"type": ["number", "null"], "minimum": 0},
+        "periodicAmountUSD": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "operationalContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "region": {"type": ["string", "null"]},
+        "season": {"type": ["string", "null"], "enum": ["dry", "rainy", "harmattan", "transition", null]},
+        "day_period": {"type": ["string", "null"], "enum": ["day", "night", null]},
+        "ambient_temperature_c": {"type": ["number", "null"]},
+        "humidity_pct": {"type": ["number", "null"], "minimum": 0, "maximum": 100}
+      }
+    },
+    "paymentFeatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "payments_last_6_months": {"type": ["integer", "null"], "minimum": 0},
+        "late_payments_last_6_months": {"type": ["integer", "null"], "minimum": 0},
+        "missed_payments_last_6_months": {"type": ["integer", "null"], "minimum": 0},
+        "failed_payments_last_6_months": {"type": ["integer", "null"], "minimum": 0},
+        "late_payment_count_12m": {"type": ["number", "null"], "minimum": 0},
+        "missed_payment_count_12m": {"type": ["number", "null"], "minimum": 0},
+        "failed_payment_count_12m": {"type": ["number", "null"], "minimum": 0},
+        "payment_success_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "average_days_late": {"type": ["number", "null"], "minimum": 0},
+        "outstanding_balance": {"type": ["number", "null"], "minimum": 0},
+        "amount_due": {"type": ["number", "null"], "minimum": 0},
+        "days_since_last_payment": {"type": ["number", "null"], "minimum": 0},
+        "last_payment_status": {"type": ["string", "null"]}
+      }
+    },
+    "kitIntelligenceOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maintenance_risk": {"type": ["number", "null"], "minimum": 0},
+        "maintenance_risk_score": {"type": ["number", "null"], "minimum": 0},
+        "maintenance_probability": {"type": ["number", "null"], "minimum": 0},
+        "security_risk": {"type": ["number", "null"], "minimum": 0},
+        "security_risk_score": {"type": ["number", "null"], "minimum": 0},
+        "security_probability": {"type": ["number", "null"], "minimum": 0},
+        "battery_health": {"type": ["string", "null"], "enum": ["healthy", "degraded", "critical", "unknown", null]},
+        "critical_anomaly": {"type": ["boolean", "null"]}
+      }
+    },
+    "dataQuality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity_resolved", "missing_features", "warnings"],
+      "properties": {
+        "identity_resolved": {"type": "boolean"},
+        "telemetry_age_seconds": {"type": ["integer", "null"], "minimum": 0},
+        "missing_features": {"type": "array", "items": {"type": "string"}},
+        "warnings": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

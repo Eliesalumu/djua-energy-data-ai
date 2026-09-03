@@ -18,6 +18,7 @@ Les briques suivantes sont operationnelles en local :
 - CLI de demonstration jury dans `scripts/predict_device_cli.py` ;
 - API FastAPI locale dans `apps/api/main.py` ;
 - ingestion MVP avec validation, anti-doublon, quarantaine, audit, metriques et alerte ;
+- module DJUA AI Solar Advisor pour recommander un kit solaire avant installation ;
 - tests unitaires couvrant le pipeline, l'ingestion et les handlers API.
 
 ## Flux MVP
@@ -62,10 +63,32 @@ GET  /telemetry/quarantine
 GET  /telemetry/audit
 POST /maintenance/predict
 POST /security/predict
+POST /v1/customer/evaluate
+POST /v1/customer/evaluate-from-telemetry
+GET  /v1/customers
+GET  /v1/customers/{client_id}
+GET  /v1/customer/decisions
+GET  /v1/customer/decisions/{decision_id}
+GET  /v1/predictions
 POST /demo/generate
 ```
 
 Les endpoints `/maintenance/predict` et `/security/predict` sont des endpoints directs de test modele. Le flux principal MVP est `/telemetry/analyze`.
+
+Pour la decision client multidimensionnelle, le backend metier doit envoyer une identite client-kit deja resolue
+dans `identity`, avec `resolution_status`. `/v1/customer/evaluate` consomme un snapshot deja enrichi avec
+`kit_intelligence`. Si le backend appelant dispose de la telemetrie brute, utiliser
+`/v1/customer/evaluate-from-telemetry` : l'API calcule alors uniquement maintenance/securite localement avant
+d'appeler le moteur de decision client. L'API IA ne resout pas les affectations client-kit.
+Le backend envoie l'historique brut dans `payments[]`; l'API IA/Data calcule les features paiement (`payment_success_rate`,
+retards, echecs, jours depuis dernier paiement, solde ouvert) avant le scoring.
+
+Les mesures recues par `/telemetry/analyze` et `/v1/customer/evaluate-from-telemetry` sont stockees dans
+`telemetry_records`, puis les predictions utilisent la fenetre historique recente du device pour capter les tendances.
+Le stockage IA/Data repose sur cinq tables principales: `customers`, `telemetry_records`, `prediction_history`,
+`device_state` et `customer_decision_history`. Les decisions client sont historisees dans
+`customer_decision_history`; les profils clients et derniers scores sont relisibles via `/v1/customers`, et les
+predictions techniques filtrees par client/kit/device via `/v1/predictions`.
 
 ## Demonstrations
 
@@ -97,6 +120,36 @@ Demo jury internationale temps reel :
 
 ```powershell
 .\scripts\demo_jury_realtime_fleet.ps1
+```
+
+Demo conseil energetique et recommandation de kit :
+
+```powershell
+.\.venv\Scripts\python.exe scripts\demo_solar_advisor.py
+```
+
+Generer le dataset synthetique Solar Advisor de 100 000 lignes :
+
+```powershell
+.\.venv\Scripts\python.exe scripts\generate_solar_advisor_dataset.py --rows 100000
+```
+
+Endpoints Solar Advisor :
+
+```text
+GET  /solar-advisor/catalogs
+POST /solar-advisor/recommend
+POST /solar-advisor/conversation
+GET  /solar-advisor/recommendations
+GET  /solar-advisor/recommendations/{recommendation_id}
+POST /solar-advisor/recommendations/{recommendation_id}/contact
+POST /solar-advisor/recommendations/{recommendation_id}/explain
+```
+
+Pour activer l'explication IA apres devis, configurer une nouvelle cle OpenAI en variable d'environnement, jamais dans le code :
+
+```powershell
+$env:OPENAI_API_KEY="votre_nouvelle_cle"
 ```
 
 ## Donnees Boitier Attendues

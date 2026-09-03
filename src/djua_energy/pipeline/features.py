@@ -12,6 +12,7 @@ def _series(df: pd.DataFrame, column: str, default: Any) -> pd.Series:
 
 
 def build_maintenance_features(records: list[dict[str, Any]]) -> pd.DataFrame:
+    # Features techniques sur fenetre historique: degradation batterie, charge et connectivite.
     df = pd.DataFrame(records)
     df = df.sort_values(["device_id", "event_time"]).copy()
     df["event_time"] = pd.to_numeric(df["event_time"], errors="coerce")
@@ -21,8 +22,6 @@ def build_maintenance_features(records: list[dict[str, Any]]) -> pd.DataFrame:
     df["battery_voltage_trend"] = grouped["battery_voltage_v"].diff()
     df["battery_voltage_volatility"] = grouped["battery_voltage_v"].rolling(3).std().reset_index(level=0, drop=True)
     df["soc_drop"] = grouped["state_of_charge_pct"].diff().fillna(0)
-    df["battery_temp_trend"] = grouped["battery_temperature_c"].diff()
-    df["max_battery_temp"] = grouped["battery_temperature_c"].transform("max")
     df["charge_duration_seconds"] = _series(df, "charge_duration_seconds", 0).astype(float)
     df["discharge_duration_seconds"] = _series(df, "discharge_duration_seconds", 0).astype(float)
     df["solar_load_ratio"] = _series(df, "solar_power_w", 0).astype(float) / (
@@ -52,28 +51,18 @@ def build_maintenance_features(records: list[dict[str, Any]]) -> pd.DataFrame:
         "battery_voltage_trend",
         "battery_voltage_volatility",
         "soc_drop",
-        "battery_temp_trend",
-        "max_battery_temp",
         "charge_duration_seconds",
         "discharge_duration_seconds",
         "solar_load_ratio",
         "health_delta",
         "error_count",
-        "reset_frequency",
-        "sensor_availability",
-        "connectivity_gap",
         "device_temp_internal",
         "solar_controller_instability",
         "overload_signal",
-        "short_circuit_signal",
         "electrical_stability",
         "ambient_temperature",
         "humidity_pct",
-        "solar_irradiance",
-        "battery_age_months",
         "night_operation",
-        "usage_intensity",
-        "network_quality_score",
         "season_rainy",
     ]
     df[feature_columns] = df[feature_columns].astype(float)
@@ -81,6 +70,7 @@ def build_maintenance_features(records: list[dict[str, Any]]) -> pd.DataFrame:
 
 
 def build_security_features(records: list[dict[str, Any]]) -> pd.DataFrame:
+    # Features securite physique: mouvement, geofence, ouverture boitier, silence reseau et sabotage.
     df = pd.DataFrame(records)
     df = df.sort_values(["device_id", "event_time"]).copy()
     df["event_time"] = pd.to_numeric(df["event_time"], errors="coerce")
@@ -111,25 +101,13 @@ def build_security_features(records: list[dict[str, Any]]) -> pd.DataFrame:
     df["night_operation"] = (_series(df, "day_period", "") == "night").astype(int)
 
     feature_columns = [
-        "distance_to_installation",
         "geofence_exit",
         "movement_speed",
-        "movement_duration",
-        "movement_events",
         "enclosure_opened",
-        "tamper_events",
-        "impact_or_tilt",
         "movement_then_gap",
         "gap_after_opening",
-        "device_silence_duration",
-        "identity_mismatch",
         "sim_or_operator_change",
-        "post_security_reset",
-        "security_sensor_missing",
-        "abnormal_usage",
         "repeated_suspicious_events",
-        "security_risk_zone_score",
-        "network_quality_score",
         "mobile_installation",
         "night_operation",
     ]

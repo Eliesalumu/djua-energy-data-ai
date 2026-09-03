@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Djua Energy - Console IA Kit</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <link rel="stylesheet" href="/static/kit_console.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><span>DJ</span></span>
+        <div class="brand-copy">
+          <strong>Djua Energy</strong>
+          <span>Console IA/Data</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="Sections">
+        <a href="/solar-advisor" target="_blank" style="color: #f59e0b; font-weight: 600;"><span><i data-lucide="sparkles"></i></span>App Solar Advisor ↗</a>
+        <a href="#advisor"><span><i data-lucide="sun-medium"></i></span>Solar Advisor (Intégré)</a>
+        <a href="#identity"><span><i data-lucide="fingerprint"></i></span>Kit attribue</a>
+        <a href="#battery"><span><i data-lucide="battery-charging"></i></span>Batterie</a>
+        <a href="#solar"><span><i data-lucide="sun"></i></span>Telemetrie</a>
+        <a href="#security"><span><i data-lucide="shield-alert"></i></span>Securite</a>
+        <a href="#result"><span><i data-lucide="activity"></i></span>Diagnostic</a>
+        <a href="#client-scoring"><span><i data-lucide="user-check"></i></span>Scoring client</a>
+        <a href="#chat"><span><i data-lucide="messages-square"></i></span>Chat IA</a>
+      </nav>
+
+      <div class="side-note">
+        <span class="dot"><i data-lucide="radio"></i></span>
+        <p>Demo locale. Le backend est simule par ce formulaire, puis l'API IA/Data calcule les risques.</p>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Solar Advisor pre-attribution + diagnostic IA apres attribution</p>
+          <h1>Recommander un kit solaire, puis superviser les kits attribues</h1>
+        </div>
+        <div class="status-pill" id="apiStatus"><i data-lucide="server"></i><span>API locale</span></div>
+      </header>
+
+      <section class="hero-panel">
+        <div class="hero-copy">
+          <h2>Deux modules separes: conseil solaire avant vente, diagnostic IA quand le kit existe deja.</h2>
+          <p>L'Advisor part uniquement des besoins energetiques. Le diagnostic kit/scoring client utilise ensuite les identites resolues et la telemetrie terrain.</p>
+        </div>
+        <svg class="system-map" viewBox="0 0 520 220" role="img" aria-label="Schema du flux kit vers IA">
+          <defs>
+            <linearGradient id="pulse" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#12b886"/>
+              <stop offset="100%" stop-color="#2970ff"/>
+            </linearGradient>
+          </defs>
+          <rect x="22" y="35" width="116" height="72" rx="12" fill="#f7faf9" stroke="#c9d8d2"/>
+          <text x="80" y="67" text-anchor="middle">Kit solaire</text>
+          <text x="80" y="88" text-anchor="middle" class="muted-svg">telemetrie</text>
+          <path d="M138 72 C190 72 205 72 256 72" stroke="url(#pulse)" stroke-width="5" fill="none"/>
+          <circle cx="256" cy="72" r="34" fill="#f7fbff" stroke="#9fc5ff"/>
+          <text x="256" y="69" text-anchor="middle">IA</text>
+          <text x="256" y="90" text-anchor="middle" class="muted-svg">modeles</text>
+          <path d="M290 72 C345 72 362 72 416 72" stroke="url(#pulse)" stroke-width="5" fill="none"/>
+          <rect x="416" y="35" width="82" height="72" rx="12" fill="#fffaf4" stroke="#f0c48a"/>
+          <text x="457" y="67" text-anchor="middle">Decision</text>
+          <text x="457" y="88" text-anchor="middle" class="muted-svg">action</text>
+          <rect x="122" y="143" width="278" height="42" rx="21" fill="#0f172a"/>
+          <text x="261" y="169" text-anchor="middle" fill="#fff">historique + prediction + scoring</text>
+        </svg>
+      </section>
+
+      <section class="module-stack">
+        <section class="operations-heading">
+          <p class="eyebrow">Module opérationnel après attribution</p>
+          <h2><i data-lucide="activity"></i> Diagnostic kit et scoring client</h2>
+        </section>
+
+        <section class="layout-grid">
+        <form class="input-panel" id="kitForm">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Donnees d'entree</p>
+              <h2><i data-lucide="package-check"></i>Payload backend resolu</h2>
+            </div>
+            <div class="preset-row">
+              <button type="button" data-preset="normal">Normal</button>
+              <button type="button" data-preset="critical">Critique</button>
+              <button type="button" data-preset="security">En risque de Securité</button>
+            </div>
+          </div>
+
+          <fieldset id="identity">
+            <legend>Identite client-kit-device</legend>
+            <div class="field-grid compact">
+              <label>Client ID<input name="client_id" value="client-demo-001"></label>
+              <label>Kit ID<input name="kit_id" value="kit-demo-001"></label>
+              <label>Device ID<input name="device_id" value="device-demo-001"></label>
+              <label>Contrat<input name="contract_id" value="contract-demo-001"></label>
+              <label>Assignment<input name="assignment_id" value="assignment-demo-001"></label>
+              <label>Segment
+                <select name="customer_segment">
+                  <option value="residential">residential</option>
+                  <option value="business">business</option>
+                  <option value="community">community</option>
+                </select>
+              </label>
+              <label>Anciennete mois<input type="number" step="1" name="tenure_months"></label>
+              <label>Contrats actifs<input type="number" step="1" name="active_contracts"></label>
+            </div>
+          </fieldset>
+
+          <fieldset id="battery">
+            <legend>Batterie</legend>
+            <div class="field-grid">
+              <label>Tension V<input type="number" step="0.01" name="battery_voltage_v"></label>
+              <label>Courant A<input type="number" step="0.01" name="battery_current_a"></label>
+              <label>Puissance W<input type="number" step="0.01" name="battery_power_w"></label>
+              <label>Charge %<input type="number" step="0.1" name="state_of_charge_pct"></label>
+              <label>Sante %<input type="number" step="0.1" name="state_of_health_pct"></label>
+              <label>Code erreur<input name="battery_error_code"></label>
+            </div>
+          </fieldset>
+
+          <fieldset id="solar">
+            <legend>Solaire et consommation</legend>
+            <div class="field-grid">
+              <label>Puissance solaire<input type="number" step="0.01" name="solar_power_w"></label>
+              <label>Puissance charge W<input type="number" step="0.01" name="load_power_w"></label>
+              <label>Conso anormale<select name="abnormal_consumption_detected"><option value="false">false</option><option value="true">true</option></select></label>
+              <label>Surcharge<select name="overload_detected"><option value="false">false</option><option value="true">true</option></select></label>
+            </div>
+          </fieldset>
+
+          <fieldset id="security">
+            <legend>Securite, position et reseau</legend>
+            <div class="field-grid">
+              <label>Geofence<select name="geofence_status"><option>inside</option><option>outside</option><option>unknown</option></select></label>
+              <label>Boitier ouvert<select name="enclosure_opened"><option value="false">false</option><option value="true">true</option></select></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Contexte</legend>
+            <div class="field-grid">
+              <label>Region<input name="region"></label>
+              <label>Saison<select name="season"><option>dry</option><option>rainy</option><option>harmattan</option><option>transition</option></select></label>
+              <label>Periode<select name="day_period"><option>day</option><option>night</option></select></label>
+              <label>Temperature ambiante<input type="number" step="0.1" name="ambient_temperature_c"></label>
+              <label>Humidite %<input type="number" step="0.1" name="humidity_pct"></label>
+            </div>
+          </fieldset>
+
+          <button class="primary-action" type="submit">
+            <i data-lucide="sparkles"></i>
+            <span class="button-label">Lancer la prediction du kit</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+          <div class="run-feedback" id="runFeedback" role="status" aria-live="polite">
+            <span class="run-dot" aria-hidden="true"></span>
+            <span>Pret a analyser le kit selectionne.</span>
+          </div>
+        </form>
+
+        <section class="client-score-panel" id="client-scoring">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Parcours independant</p>
+              <h2><i data-lucide="user-check"></i>Scoring client</h2>
+            </div>
+          </div>
+          <div class="linked-kit" aria-live="polite">
+            <span><i data-lucide="link-2"></i>Client du kit</span>
+            <strong id="linkedKitLabel">client-demo-001 · kit-demo-001</strong>
+          </div>
+          <p class="panel-intro">Le bouton utilise le client et les paiements deja saisis dans le bloc Identite. Aucun nom ou formulaire client parallele n'est necessaire.</p>
+          <div class="field-grid compact scoring-payment-fields">
+            <label>Montant periodique USD<input type="number" step="1" name="scoring_periodic_amount_usd" value="20"></label>
+            <label>Profil paiement
+              <select name="scoring_payment_profile">
+                <option value="good">paiements reguliers</option>
+                <option value="late">retards</option>
+                <option value="missed">impayes</option>
+              </select>
+            </label>
+          </div>
+          <p class="field-note">Ces informations servent uniquement au scoring client.</p>
+          <button class="primary-action" id="scoreClientButton" type="button"><i data-lucide="badge-check"></i><span class="button-label">Scorer le client de ce kit</span></button>
+          <div class="run-feedback" id="scoringFeedback" role="status" aria-live="polite"><span class="run-dot"></span><span>Pret a scorer le client rattache.</span></div>
+          <div class="client-score-result" id="clientScoreResult">Le score apparaitra ici apres le diagnostic du kit.</div>
+        </section>
+
+        <section class="result-panel" id="result" tabindex="-1">
+          <div class="section-title">
+            <div>
+              <p class="eyebrow">Sortie modele</p>
+              <h2><i data-lucide="stethoscope"></i>Diagnostic et explication</h2>
+            </div>
+            <button type="button" class="ghost" id="copyJson"><i data-lucide="copy"></i>Copier JSON</button>
+          </div>
+
+          <div class="progress-rail" id="progressRail" aria-hidden="true"><span></span></div>
+
+          <div class="verdict" id="verdict">
+            <span class="verdict-label"><i data-lucide="circle-dot"></i><span>En attente</span></span>
+            <strong>Renseignez les valeurs puis lancez la prediction.</strong>
+            <p>Le diagnostic apparaitra ici avec les facteurs principaux.</p>
+          </div>
+
+          <div class="score-section">
+            <div>
+              <p class="eyebrow">Prediction kit</p>
+              <h3><i data-lucide="wrench"></i>Maintenance et securite</h3>
+            </div>
+          </div>
+
+          <div class="metric-grid">
+            <div><span><i data-lucide="wrench"></i>Maintenance</span><strong id="maintenanceInsight">--</strong><small id="maintenanceScore">Score maintenance: --</small></div>
+            <div><span><i data-lucide="shield"></i>Securite</span><strong id="securityInsight">--</strong><small id="securityScore">Score securite: --</small></div>
+            <div><span><i data-lucide="gauge"></i>Operationnel</span><strong id="operationalInsight">--</strong><small id="operationalScore">Score operationnel: --</small></div>
+            <div><span><i data-lucide="flag"></i>Priorite</span><strong id="priorityInsight">--</strong><small id="priorityScore">Score priorite: --</small></div>
+          </div>
+
+          <div class="explain-box">
+            <h3><i data-lucide="list-checks"></i>Pourquoi ?</h3>
+            <div class="reason-groups" id="reasonGroups">
+              <section>
+                <h4><i data-lucide="wrench"></i>Maintenance</h4>
+                <ul id="maintenanceReasons"><li>Aucune prediction lancee.</li></ul>
+              </section>
+              <section>
+                <h4><i data-lucide="shield-alert"></i>Securite</h4>
+                <ul id="securityReasons"><li>Aucune prediction lancee.</li></ul>
+              </section>
+              <section>
+                <h4><i data-lucide="route"></i>Decision globale</h4>
+                <ul id="decisionReasons"><li>Aucune prediction lancee.</li></ul>
+              </section>
+            </div>
+          </div>
+
+          <div class="json-tabs">
+            <button type="button" class="active" data-json-tab="payload">JSON envoye</button>
+            <button type="button" data-json-tab="response">JSON recu</button>
+          </div>
+          <pre class="json-view" id="jsonView">{}</pre>
+
+          <section class="chat-panel" id="chat">
+            <div>
+              <p class="eyebrow">Assistant IA contextuel</p>
+              <h2><i data-lucide="bot-message-square"></i>Questions sur ce diagnostic</h2>
+            </div>
+            <div class="chat-log" id="chatLog">
+              <div class="message assistant"><i data-lucide="bot"></i><span>Lance une prediction, puis demande-moi par exemple : "Pourquoi ce kit est critique ?"</span></div>
+            </div>
+            <div class="module-test-row" aria-label="Questions par module">
+              <button type="button" data-chat-question="Pourquoi ce kit est critique cote maintenance ?"><i data-lucide="wrench"></i>Tester maintenance</button>
+              <button type="button" data-chat-question="Quels sont les signaux de securite de ce kit ?"><i data-lucide="shield-alert"></i>Tester securite</button>
+              <button type="button" data-chat-question="Explique le scoring client global en separant paiement et operationnel."><i data-lucide="user-check"></i>Tester scoring client</button>
+            </div>
+            <form class="chat-form" id="chatForm">
+              <input name="message" placeholder="Pose ta question sur ce kit..." autocomplete="off">
+              <button type="submit"><i data-lucide="send"></i>Envoyer</button>
+            </form>
+          </section>
+        </section>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script src="/static/kit_console.js"></script>
+</body>
+</html>
