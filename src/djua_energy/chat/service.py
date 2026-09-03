@@ -53,7 +53,6 @@ class OpenAIResponsesClient:
         timeout_seconds: int = 45,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model = model or os.getenv("DJUA_OPENAI_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
         self.timeout_seconds = timeout_seconds
 
     @property

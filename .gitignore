@@ -22,11 +22,8 @@ __pycache__/
 *.tmp
 
 # Modèles et résultats
-models/
-artifacts/
-mlruns/
-checkpoints/
-outputs/
+
+
 
 # Editeurs et OS
 .idea/

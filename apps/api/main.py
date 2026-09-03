@@ -1251,6 +1251,11 @@ def _with_persisted_customer_decision(input_snapshot: dict[str, Any], result: di
     summary="Verifier que l'API est demarree",
     description="Retourne un statut simple pour les tests, les probes AWS App Runner et la verification manuelle.",
 )
+@app.get("/", include_in_schema=False)
+def frontend_home() -> FileResponse:
+    return FileResponse("apps/api/static/kit_console.html")
+
+
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "djua-energy-iot-demo"}
 
