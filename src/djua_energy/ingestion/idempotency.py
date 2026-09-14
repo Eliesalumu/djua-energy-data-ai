@@ -9,10 +9,7 @@ def record_idempotency_key(record: dict[str, Any]) -> str:
     message_id = record.get("message_id")
     if message_id:
         return str(message_id)
-    return "|".join(
-        str(record.get(field, ""))
-        for field in ("device_id", "event_time", "sequence_number")
-    )
+    return "|".join(str(record.get(field, "")) for field in ("device_id", "kit_id", "schema_version"))
 
 
 class InMemoryIdempotencyStore:

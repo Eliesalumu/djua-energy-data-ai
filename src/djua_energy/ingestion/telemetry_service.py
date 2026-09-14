@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 from djua_energy.alerting.service import AlertDecision, build_alert_decision
@@ -43,7 +44,8 @@ class TelemetryIngestionService:
         self.metrics.increment("ingestion.windows_received")
         self.metrics.increment("ingestion.records_received", len(records))
 
-        valid_records, invalid_records = split_valid_invalid_prediction(records)
+        normalized_records = self._normalize_records_for_prediction(records)
+        valid_records, invalid_records = split_valid_invalid_prediction(normalized_records)
         for invalid in invalid_records:
             self.quarantine_store.add(invalid.record, invalid.errors)
         if invalid_records:
@@ -142,6 +144,17 @@ class TelemetryIngestionService:
             return new_records[-self.sliding_window_size :]
         records = self.realtime_store.recent_records_for_device(device_id, limit=self.sliding_window_size)
         return records or new_records[-self.sliding_window_size :]
+
+    def _normalize_records_for_prediction(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        base_timestamp = int(datetime.now(UTC).timestamp())
+        normalized: list[dict[str, Any]] = []
+        total = len(records)
+        for index, record in enumerate(records):
+            item = dict(record)
+            if not item.get("event_time"):
+                item["event_time"] = str(base_timestamp - ((total - index - 1) * 300))
+            normalized.append(item)
+        return normalized
 
     def _build_feature_snapshot(self, records: list[dict[str, Any]]) -> dict[str, Any]:
         maintenance_features = build_maintenance_features(records).iloc[-1].to_dict()

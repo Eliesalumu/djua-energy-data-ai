@@ -11,19 +11,6 @@ def _reset_telemetry_service() -> None:
     api_main.telemetry_service = TelemetryIngestionService(api_main.engine)
 
 
-def _paid_payment(payment_id: str, paid_at: str = "2026-08-10T10:00:00+02:00") -> dict:
-    return {
-        "payment_id": payment_id,
-        "contract_id": "contract-001",
-        "client_id": "client-001",
-        "due_date": "2026-08-10T00:00:00+02:00",
-        "paid_at": paid_at,
-        "days_late": 0,
-        "amount_due": 20,
-        "amount_paid": 20,
-        "status": "paid",
-        "method": "orange_money",
-    }
 
 
 def test_telemetry_analyze_endpoint_processes_records() -> None:
@@ -147,7 +134,6 @@ def test_frontend_decision_detail_keeps_entity_links() -> None:
     decision = body["decision"]
     assert decision["decision_id"] == "decision-001"
     assert decision["kit_id"] == "kit-0"
-    assert decision["client_id"] == "client-001"
     assert decision["source"]["kind"] == "model_output"
     assert decision["model_outputs"]["maintenance"]["model_version"]
     assert decision["model_outputs"]["security"]["model_version"]
@@ -172,21 +158,6 @@ def test_frontend_create_intervention_exposes_workflow_payload() -> None:
     assert body["actions"][0]["id"] == "save_draft"
     assert body["actions"][1]["source"]["kind"] == "not_available"
 
-
-def test_frontend_digital_twin_and_customer_profile_are_coherent() -> None:
-    twin = api_main.frontend_kit_digital_twin("kit-0")
-    customer = api_main.frontend_customer_risk_profile("client-001")
-
-    assert twin["identity"]["kit_id"] == "kit-0"
-    assert twin["identity"]["client_id"] == "client-001"
-    assert twin["battery"]["voltage"]["unit"] == "V"
-    assert twin["health"]["source"]["kind"] == "model_derived"
-    assert twin["maintenance_prediction"]["source"]["kind"] == "model_output"
-    assert twin["telemetry"]["series"]
-    assert customer["customer"]["client_id"] == "client-001"
-    assert customer["customer"]["source"]["kind"] == "model_derived"
-    assert customer["payment_risk"]["source"]["kind"] == "not_available"
-    assert customer["recommendations"]
 
 
 def test_frontend_supporting_endpoints_expose_admin_performance_and_realtime() -> None:
@@ -216,9 +187,6 @@ def test_telemetry_schema_matches_current_required_contract() -> None:
         "message_type",
         "device_id",
         "kit_id",
-        "serial_number",
-        "event_time",
-        "sequence_number",
         "battery_voltage_v",
         "battery_current_a",
         "battery_power_w",
@@ -227,7 +195,9 @@ def test_telemetry_schema_matches_current_required_contract() -> None:
         "state_of_health_pct",
     ]:
         assert field in schema["required"]
-        assert field in schema["properties"]
+    for field in ["serial_number", "event_time", "sequence_number"]:
+        assert field not in schema["required"]
+        assert field not in schema["properties"]
 
     for field in [
         "solar_power_w",
@@ -252,228 +222,48 @@ def test_telemetry_schema_matches_current_required_contract() -> None:
         assert field in schema["properties"]
 
 
-def test_frontend_business_schemas_are_actionable() -> None:
-    intervention_schema = json.loads(Path("schemas/intervention.v1.schema.json").read_text(encoding="utf-8"))
-    customer_schema = json.loads(Path("schemas/customer.v1.schema.json").read_text(encoding="utf-8"))
-
-    for field in ["intervention_id", "decision_id", "kit_id", "type", "priority", "status", "reason"]:
-        assert field in intervention_schema["required"]
-        assert field in intervention_schema["properties"]
-
-    for field in ["client_id", "name", "risk_score", "risk_level", "source"]:
-        assert field in customer_schema["required"]
-        assert field in customer_schema["properties"]
-
-    assert "payment_risk" in customer_schema["properties"]
-    assert "estimated_cost" in intervention_schema["properties"]
 
 
-def test_customer_decision_from_telemetry_builds_kit_intelligence(tmp_path, monkeypatch) -> None:
-    store = RealtimeTelemetryStore(tmp_path / "customer.sqlite")
+
+
+def test_device_evaluate_from_telemetry_builds_kit_intelligence(tmp_path, monkeypatch) -> None:
+    store = RealtimeTelemetryStore(tmp_path / "device.sqlite")
     monkeypatch.setattr(api_main, "realtime_store", store)
     records = SyntheticTelemetryGenerator(seed=303, num_kits=1).generate(
         scenarios=["overheating"],
         duration_hours=1,
     )[:4]
+    records = [
+        {key: value for key, value in record.items() if key not in {"serial_number", "event_time", "sequence_number"}}
+        for record in records
+    ]
     latest = records[-1]
-    payload = api_main.CustomerDecisionFromTelemetryRequest(
+    payload = api_main.DeviceTelemetryEvaluationRequest(
         schema_version="1.0",
-        request_id="req-from-telemetry",
+        request_id="req-device",
         as_of="2026-08-20T10:00:00+02:00",
-        identity={
-            "client_id": "client-001",
-            "kit_id": latest["kit_id"],
-            "device_id": latest["device_id"],
-            "contract_id": "contract-001",
-            "assignment_id": "assignment-001",
-            "resolution_status": "resolved",
-        },
+        device_id=latest["device_id"],
+        kit_id=latest["kit_id"],
         records=records,
-        payments=[_paid_payment("pay-001"), _paid_payment("pay-002", "2026-07-12T10:00:00+02:00")],
-        customer={"tenure_months": 18, "active_contracts": 1, "customer_segment": "residential"},
-        contract={"periodic_amount_usd": 20, "status": "active"},
-        data_quality={"identity_resolved": True, "missing_features": [], "warnings": []},
+        data_quality={"missing_features": [], "warnings": []},
     )
 
-    body = api_main.customer_decision_evaluate_from_telemetry(payload)
+    body = api_main.device_evaluate_from_telemetry(payload)
 
-    assert body["request_id"] == "req-from-telemetry"
-    assert body["identity"]["client_id"] == "client-001"
-    assert body["scores"]["operational_risk"] >= 0
-    assert body["identity_contract"]["status"] == "resolved"
-    assert body["kit_intelligence_source"]["kind"] == "model_output"
-    assert body["kit_intelligence_source"]["kit_intelligence"]["operational_risk"]["score"] >= 0
-    assert body["kit_intelligence_source"]["maintenance_prediction"]["technical_risk_probability"] >= 0
+    assert body["request_id"] == "req-device"
+    assert body["device_id"] == latest["device_id"]
+    assert body["kit_id"] == latest["kit_id"]
+    assert body["maintenance_prediction"]["technical_risk_probability"] >= 0
+    assert body["security_prediction"]["suspicious_activity_score"] >= 0
+    assert body["kit_intelligence"]["operational_risk"]["score"] >= 0
     assert body["trend_source"]["new_records"] == len(records)
     assert body["trend_source"]["prediction_window_records"] == len(records)
-    assert body["persistence"]["stored"] is True
-
-    history = api_main.customer_decision_history(client_id="client-001")
-    assert len(history["items"]) == 1
-    detail = api_main.customer_decision_detail(body["persistence"]["decision_id"])
-    assert detail["result"]["request_id"] == "req-from-telemetry"
-    assert detail["input_snapshot"]["payment"]["source"] == "computed_from_raw_payments"
-    assert detail["input_snapshot"]["payment"]["payments_last_6_months"] == 2
-    assert len(detail["input_snapshot"]["raw_payments"]) == 2
-    customer = api_main.customer_profile_detail("client-001")
-    assert customer["latest_kit_id"] == latest["kit_id"]
-    assert customer["latest_device_id"] == latest["device_id"]
-    assert customer["latest_decision_id"] == body["persistence"]["decision_id"]
-    assert customer["latest_operational_risk_score"] == body["scores"]["operational_risk"]
 
     stored_records = store.recent_records_for_device(latest["device_id"], limit=10)
-    assert stored_records[-1]["client_id"] == "client-001"
+    assert stored_records[-1]["device_id"] == latest["device_id"]
     stored_predictions = store.prediction_history(latest["device_id"])
-    assert stored_predictions[0]["client_id"] == "client-001"
-    api_predictions = api_main.prediction_history_v1(client_id="client-001")
-    assert api_predictions["items"][0]["kit_id"] == latest["kit_id"]
-    state = store.get_device_state(latest["device_id"])
-    assert state["client_id"] == "client-001"
-
-
-def test_customer_decision_from_telemetry_uses_backend_resolved_identity(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(api_main, "realtime_store", RealtimeTelemetryStore(tmp_path / "customer.sqlite"))
-    records = SyntheticTelemetryGenerator(seed=404, num_kits=1).generate(
-        scenarios=["normal_operation"],
-        duration_hours=1,
-    )[:3]
-    latest = records[-1]
-
-    payload = api_main.CustomerDecisionFromTelemetryRequest(
-        schema_version="1.0",
-        request_id="req-history",
-        as_of="2026-08-20T10:00:00+02:00",
-        identity={
-            "assignment_id": "assignment-history-001",
-            "client_id": "client-history-001",
-            "kit_id": latest["kit_id"],
-            "device_id": latest["device_id"],
-            "contract_id": "contract-history-001",
-            "resolution_status": "resolved",
-        },
-        records=records,
-        payments=[_paid_payment("pay-history-001")],
-        customer={"tenure_months": 12, "active_contracts": 1, "customer_segment": "residential"},
-        contract={"periodic_amount_usd": 20, "status": "active"},
-        data_quality={"missing_features": [], "warnings": []},
-    )
-
-    body = api_main.customer_decision_evaluate_from_telemetry(payload)
-
-    assert body["identity_contract"]["status"] == "resolved"
-    assert body["identity"]["client_id"] == "client-history-001"
-    assert body["identity"]["assignment_id"] == "assignment-history-001"
-
-
-def test_customer_decision_from_telemetry_blocks_unresolved_identity(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(api_main, "realtime_store", RealtimeTelemetryStore(tmp_path / "customer.sqlite"))
-    records = SyntheticTelemetryGenerator(seed=505, num_kits=1).generate(
-        scenarios=["normal_operation"],
-        duration_hours=1,
-    )[:3]
-    latest = records[-1]
-    payload = api_main.CustomerDecisionFromTelemetryRequest(
-        schema_version="1.0",
-        request_id="req-unresolved",
-        as_of="2026-08-20T10:00:00+02:00",
-        identity={
-            "kit_id": latest["kit_id"],
-            "device_id": latest["device_id"],
-            "resolution_status": "unresolved",
-        },
-        records=records,
-        payments=[_paid_payment("pay-unresolved-001")],
-        customer={"tenure_months": 12, "active_contracts": 1, "customer_segment": "residential"},
-        contract={"periodic_amount_usd": 20, "status": "active"},
-        data_quality={"missing_features": [], "warnings": []},
-    )
-
-    body = api_main.customer_decision_evaluate_from_telemetry(payload)
-
-    assert body["identity_contract"]["status"] == "unresolved"
-    assert body["identity_status"] == "unresolved"
-    assert body["decision"]["recommended_action"] == "resolve_identity"
-    assert body["confidence"] == 0
-
-
-def test_backend_resolved_events_sync_consumes_backend_snapshots(tmp_path, monkeypatch) -> None:
-    store = RealtimeTelemetryStore(tmp_path / "backend-sync.sqlite")
-    monkeypatch.setattr(api_main, "realtime_store", store)
-    records = SyntheticTelemetryGenerator(seed=606, num_kits=1).generate(
-        scenarios=["normal_operation"],
-        duration_hours=1,
-    )[:3]
-    latest = records[-1]
-    snapshot = {
-        "schema_version": "1.0",
-        "request_id": "req-backend-pull-001",
-        "as_of": "2026-08-20T10:00:00+02:00",
-        "identity": {
-            "client_id": "client-pull-001",
-            "kit_id": latest["kit_id"],
-            "device_id": latest["device_id"],
-            "contract_id": "contract-pull-001",
-            "assignment_id": "assignment-pull-001",
-            "resolution_status": "resolved",
-        },
-        "records": records,
-        "payments": [_paid_payment("pay-pull-001")],
-        "customer": {"tenure_months": 14, "active_contracts": 1, "customer_segment": "residential"},
-        "contract": {"periodic_amount_usd": 20, "status": "active"},
-        "data_quality": {"identity_resolved": True, "missing_features": [], "warnings": []},
-    }
-
-    class FakeBackendResolvedEventsClient:
-        def __init__(self, *args, **kwargs) -> None:
-            self.args = args
-            self.kwargs = kwargs
-
-        def process_resolved_events(self, *, processor, cursor, limit, ack) -> dict:
-            result = processor(snapshot)
-            ack_payload = {
-                "status": "processed",
-            }
-            return {
-                "status": "completed",
-                "received": 1,
-                "processed_count": 1,
-                "failed_count": 0,
-                "next_cursor": None,
-                "processed": [
-                    {
-                        "request_id": snapshot["request_id"],
-                        "ack_sent": ack,
-                        "ack_payload": ack_payload,
-                        "decision_id": result["persistence"]["decision_id"],
-                        "prediction_id": result["trend_source"]["stored_prediction_id"],
-                    }
-                ],
-                "failed": [],
-            }
-
-    monkeypatch.setattr(api_main, "BackendResolvedEventsClient", FakeBackendResolvedEventsClient)
-
-    body = api_main.backend_resolved_events_sync(
-        api_main.BackendResolvedEventsSyncRequest(
-            backend_base_url="http://backend.test",
-            limit=25,
-            ack=True,
-        )
-    )
-
-    assert body["status"] == "completed"
-    assert body["processed_count"] == 1
-    assert body["processed"][0]["request_id"] == "req-backend-pull-001"
-    assert body["processed"][0]["ack_payload"] == {"status": "processed"}
-    assert body["processed"][0]["decision_id"]
-    assert body["processed"][0]["prediction_id"]
-    assert api_main.customer_profile_detail("client-pull-001")["latest_kit_id"] == latest["kit_id"]
-    dashboard = api_main.frontend_live_ui()
-    assert dashboard["meta"]["schema_version"] == "frontend-live.v1"
-    assert dashboard["customer_profile"]["customers"][0]["client_id"] == "client-pull-001"
-    assert dashboard["customer_profile"]["recent_decisions"][0]["request_id"] == "req-backend-pull-001"
-    assert "customers" in dashboard["administration"]["data_tables"]
-
+    assert stored_predictions[0]["kit_id"] == latest["kit_id"]
+    assert store.get_device_state(latest["device_id"])["kit_id"] == latest["kit_id"]
 
 def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
     class FakeLlmClient:
@@ -489,13 +279,8 @@ def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
 
     console_context = {
         "payload": {
-            "identity": {"client_id": "client-jury-001", "kit_id": "kit-jury-001"},
-            "payments": [
-                {"status": "paid", "amount_due": 20, "amount_paid": 20},
-                {"status": "late", "amount_due": 20, "amount_paid": 20},
-                {"status": "missed", "amount_due": 20, "amount_paid": 0},
-                {"status": "failed", "amount_due": 20, "amount_paid": 0},
-            ],
+            "device_id": "device-jury-001",
+            "kit_id": "kit-jury-001",
             "records": [
                 {
                     "battery_temperature_c": 55,
@@ -512,10 +297,7 @@ def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
         },
         "prediction": {
             "scores": {
-                "client_value": 55,
-                "payment_risk": 100,
                 "operational_risk": 82,
-                "intervention_priority": 91,
             },
             "decision": {"priority": "high", "recommended_action": "technical_intervention"},
             "kit_intelligence_source": {
@@ -542,19 +324,6 @@ def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
     assert "local_fallback" in body["sources"]
     assert "kit-jury-001" in body["answer"]
     assert "temperature batterie" in body["answer"]
-    assert "paiement" not in body["answer"].lower()
-    assert "payments[]" not in body["answer"]
-
-    payment_body = api_main.demo_kit_console_chat(
-        api_main.KitConsoleChatRequest(
-            message="Qu'est-ce qui justifie le risque de paiement de 100% ?",
-            context=console_context,
-        )
-    )
-    assert "payments[]" in payment_body["answer"]
-    assert "retard" in payment_body["answer"]
-    assert "impaye" in payment_body["answer"]
-    assert "batterie" not in payment_body["answer"].lower()
 
 
 def test_demo_kit_console_chat_uses_llm_for_technical_questions_when_available(monkeypatch) -> None:
@@ -590,3 +359,45 @@ def test_demo_kit_console_chat_uses_llm_for_technical_questions_when_available(m
     assert body["used_llm"] is True
     assert body["answer"] == "Reponse OpenAI contextualisee."
     assert "OpenAIResponsesClient" in body["sources"]
+
+
+def test_demo_kit_console_chat_falls_back_when_llm_crashes(monkeypatch) -> None:
+    class BrokenLlmClient:
+        available = True
+
+        def generate(self, message: str, context: dict) -> str:
+            raise AttributeError("model configuration missing")
+
+    class FakeChatService:
+        llm_client = BrokenLlmClient()
+
+    monkeypatch.setattr(api_main, "chat_service", FakeChatService())
+
+    body = api_main.demo_kit_console_chat(
+        api_main.KitConsoleChatRequest(
+            message="Que doit faire le technicien maintenant ?",
+            context={
+                "payload": {
+                    "device_id": "device-jury-001",
+                    "kit_id": "kit-jury-001",
+                    "records": [
+                        {
+                            "battery_temperature_c": 55,
+                            "battery_voltage_v": 11.7,
+                            "state_of_health_pct": 62,
+                            "abnormal_consumption_detected": True,
+                        }
+                    ],
+                },
+                "prediction": {
+                    "scores": {"operational_risk": 82},
+                    "decision": {"priority": "high", "recommended_action": "technical_intervention"},
+                },
+            },
+        )
+    )
+
+    assert body["used_llm"] is False
+    assert body["error"] == "model configuration missing"
+    assert "local_fallback" in body["sources"]
+

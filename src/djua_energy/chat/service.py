@@ -53,6 +53,7 @@ class OpenAIResponsesClient:
         timeout_seconds: int = 45,
     ) -> None:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
         self.timeout_seconds = timeout_seconds
 
     @property
@@ -204,7 +205,7 @@ class DjuaChatService:
                     context=context,
                     sources=sources,
                 )
-            except (HTTPError, URLError, TimeoutError, RuntimeError) as exc:
+            except Exception as exc:  # noqa: BLE001 - le chat doit toujours retomber sur la reponse locale.
                 return ChatResult(
                     answer=fallback(context),
                     intent=query.intent,

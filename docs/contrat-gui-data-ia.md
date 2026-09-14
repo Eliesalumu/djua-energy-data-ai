@@ -41,9 +41,6 @@ Body :
       "message_type": "telemetry",
       "device_id": "device-001",
       "kit_id": "kit-001",
-      "serial_number": "DJUA-SN-00001",
-      "event_time": "1800000000",
-      "sequence_number": 1,
       "battery_voltage_v": 13.18,
       "battery_current_a": 3.24,
       "battery_power_w": 42.7,
@@ -63,9 +60,6 @@ schema_version
 message_type
 device_id
 kit_id
-serial_number
-event_time
-sequence_number
 battery_voltage_v
 battery_current_a
 battery_power_w
@@ -144,8 +138,7 @@ Colonnes principales :
 message_id PRIMARY KEY
 device_id
 kit_id
-event_time
-sequence_number
+event_time derive par le backend
 scenario
 payload_json
 inserted_at
@@ -489,4 +482,3 @@ Customer Profile    -> response.customer_profile
 Performance         -> response.performance
 Administration      -> response.administration
 ```
-

@@ -9,7 +9,6 @@ Routes frontend actuellement disponibles :
 - GET /frontend/decisions/{decision_id}
 - GET /frontend/kits/{kit_id}/digital-twin
 - GET /frontend/interventions/create
-- GET /frontend/customers/{client_id}/risk-profile
 - GET /frontend/performance
 - GET /frontend/admin/data-ai
 - GET /frontend/realtime/events
@@ -31,11 +30,8 @@ from djua_energy.pipeline.features import build_maintenance_features, build_secu
 from djua_energy.ingestion.telemetry_service import TelemetryIngestionService
 from djua_energy.chat.service import DjuaChatService
 from djua_energy.database.realtime_store import RealtimeTelemetryStore
-from djua_energy.features.payment_features import build_payment_features
-from djua_energy.integration.backend_events import BackendResolvedEventsClient
 from djua_energy.kit_intelligence.service import build_kit_intelligence
 from djua_energy.solar_advisor.service import SolarAdvisorService
-from djua_energy.scoring.service import CustomerScoringService
 
 app = FastAPI(
     title="Djua Energy IoT Demo",
@@ -52,20 +48,6 @@ realtime_store = RealtimeTelemetryStore()
 telemetry_service = TelemetryIngestionService(engine, realtime_store=realtime_store)
 chat_service = DjuaChatService(engine=engine)
 solar_advisor_service = SolarAdvisorService()
-customer_scoring_service: CustomerScoringService | None = None
-
-
-def _customer_scoring_service() -> CustomerScoringService:
-    global customer_scoring_service
-    if customer_scoring_service is None:
-        try:
-            customer_scoring_service = CustomerScoringService()
-        except FileNotFoundError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Modele customer scoring absent. Lancez `python scripts/train_scoring.py`.",
-            ) from exc
-    return customer_scoring_service
 
 
 TELEMETRY_RECORD_EXAMPLE = {
@@ -74,9 +56,6 @@ TELEMETRY_RECORD_EXAMPLE = {
     "message_type": "telemetry",
     "device_id": "device-demo-001",
     "kit_id": "kit-demo-001",
-    "serial_number": "SN-DEMO-001",
-    "event_time": "1786615200",
-    "sequence_number": 1,
     "battery_voltage_v": 11.8,
     "battery_current_a": -4.2,
     "battery_power_w": -49.6,
@@ -174,12 +153,6 @@ class TelemetryRecord(BaseModel):
     )
     device_id: str = Field(..., description="Identifiant unique du boitier IoT.")
     kit_id: str = Field(..., description="Identifiant du kit solaire rattache au boitier.")
-    serial_number: str = Field(..., description="Numero de serie physique du boitier ou du kit.")
-    event_time: str = Field(
-        ...,
-        description="Horodatage de la mesure. Dans le MVP, un timestamp Unix sous forme de chaine est recommande.",
-    )
-    sequence_number: int = Field(..., ge=1, description="Numero croissant du message pour ce boitier.")
     battery_voltage_v: float = Field(..., gt=0, description="Tension batterie en volts.")
     battery_current_a: float = Field(..., description="Courant batterie en amperes.")
     battery_power_w: float = Field(..., description="Puissance batterie en watts.")
@@ -221,186 +194,26 @@ class TelemetryRecord(BaseModel):
     device_error_code: str | None = Field(None, description="Code erreur general du device, NONE si aucun.")
 
 
-class CustomerDecisionIdentityRequest(BaseModel):
-    model_config = {"extra": "forbid"}
-
-    client_id: str | None = None
-    kit_id: str = Field(..., description="Identifiant du kit rattache au client.")
-    device_id: str = Field(..., description="Identifiant du boitier IoT rattache au kit.")
-    installation_id: str | None = None
-    contract_id: str | None = None
-    assignment_id: str | None = None
-    resolution_status: Literal["resolved", "unresolved", "ambiguous", "conflict", "stale", "partial"] = Field(
-        ...,
-        description="Statut de resolution fourni par le backend metier. L'API IA ne resout pas l'identite.",
-    )
-
-
-class PaymentRecord(BaseModel):
-    model_config = {"extra": "allow"}
-
-    payment_id: str | None = Field(None, description="Identifiant du paiement cote backend/Orange.")
-    client_id: str | None = Field(None, description="Identifiant client si present dans l'evenement paiement.")
-    contract_id: str | None = Field(None, description="Contrat concerne par le paiement.")
-    due_date: str | None = Field(None, description="Date d'echeance attendue.")
-    paid_at: str | None = Field(None, description="Date de paiement effectif.")
-    date: str | None = Field(None, description="Date de transaction si paid_at n'existe pas.")
-    amount_due: float | None = Field(None, ge=0, description="Montant attendu.")
-    amount_paid: float | None = Field(None, ge=0, description="Montant paye.")
-    amountUSD: float | None = Field(None, ge=0, description="Alias historique du montant paye en USD.")
-    days_late: float | None = Field(None, ge=0, description="Nombre de jours de retard. 0 si paye a temps.")
-    status: str = Field(..., description="Statut brut: paid/completed/late/missed/failed/pending/etc.")
-    method: str | None = Field(None, description="Methode de paiement, ex: orange_money.")
-
-
-class CustomerDecisionRequest(BaseModel):
-    """Snapshot Backend -> IA pour la decision client multidimensionnelle."""
+class DeviceTelemetryEvaluationRequest(BaseModel):
+    """Snapshot IA/Data limite a la telemetrie d'un device."""
 
     model_config = {
         "extra": "forbid",
         "json_schema_extra": {
             "example": {
                 "schema_version": "1.0",
-                "request_id": "req-123",
+                "request_id": "req-device-telemetry-001",
                 "as_of": "2026-08-18T14:30:00+02:00",
-                "identity": {
-                    "client_id": "client-923",
-                    "kit_id": "kit-034",
-                    "device_id": "device-001",
-                    "installation_id": "installation-674",
-                    "contract_id": "contract-884",
-                    "assignment_id": "assignment-889",
-                    "resolution_status": "resolved",
-                },
-                "telemetry": {
-                    "event_time": "2026-08-18T14:29:45+02:00",
-                    "battery_temperature_c": 48.2,
-                    "state_of_charge_pct": 32,
-                    "state_of_health_pct": 78,
-                    "connection_status": "connected",
-                },
+                "device_id": "device-001",
+                "kit_id": "kit-034",
+                "records": [TELEMETRY_RECORD_EXAMPLE],
                 "context": {
                     "region": "kinshasa",
                     "season": "dry",
-                    "day_period": "afternoon",
+                    "day_period": "day",
                     "ambient_temperature_c": 33.8,
                 },
-                "payments": [
-                    {
-                        "payment_id": "pay-001",
-                        "contract_id": "contract-884",
-                        "client_id": "client-923",
-                        "due_date": "2026-07-01T00:00:00+02:00",
-                        "paid_at": "2026-07-01T12:00:00+02:00",
-                        "days_late": 0,
-                        "amount_due": 20,
-                        "amount_paid": 20,
-                        "status": "paid",
-                        "method": "orange_money",
-                    }
-                ],
-                "customer": {
-                    "tenure_months": 18,
-                    "active_contracts": 1,
-                    "customer_segment": "residential",
-                },
-                "contract": {
-                    "periodic_amount_usd": 20,
-                    "status": "active",
-                },
-                "kit_intelligence": {
-                    "maintenance_risk": 0.84,
-                    "security_risk": 0.12,
-                    "battery_health": "degraded",
-                    "critical_anomaly": True,
-                },
                 "data_quality": {
-                    "identity_resolved": True,
-                    "telemetry_age_seconds": 15,
-                    "missing_features": [],
-                },
-            }
-        },
-    }
-
-    schema_version: str = Field(..., description="Version du contrat Backend -> IA.")
-    request_id: str = Field(..., description="Identifiant de correlation.")
-    as_of: str = Field(..., description="Instant du snapshot de decision.")
-    identity: CustomerDecisionIdentityRequest = Field(
-        ...,
-        description="Identifiants client, kit, device, contrat et affectation.",
-    )
-    telemetry: dict[str, Any] = Field(default_factory=dict)
-    context: dict[str, Any] = Field(default_factory=dict)
-    payments: list[PaymentRecord] = Field(
-        default_factory=list,
-        description="Historique brut des paiements. L'API IA calcule les features payment depuis cette liste.",
-    )
-    payment: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Compatibilite: features paiement deja calculees. Preferer payments[] brut.",
-    )
-    customer: dict[str, Any] = Field(default_factory=dict)
-    contract: dict[str, Any] = Field(default_factory=dict)
-    kit_intelligence: dict[str, Any] = Field(default_factory=dict)
-    data_quality: dict[str, Any] = Field(default_factory=dict)
-
-
-class CustomerDecisionFromTelemetryRequest(CustomerDecisionRequest):
-    model_config = {
-        "extra": "forbid",
-        "json_schema_extra": {
-            "example": {
-                "schema_version": "1.0",
-                "request_id": "req-telemetry-001",
-                "as_of": "2026-08-18T14:30:00+02:00",
-                "identity": {
-                    "client_id": "client-923",
-                    "kit_id": "kit-034",
-                    "device_id": "device-001",
-                    "installation_id": "installation-674",
-                    "contract_id": "contract-884",
-                    "assignment_id": "assignment-889",
-                    "resolution_status": "resolved",
-                },
-                "records": [TELEMETRY_RECORD_EXAMPLE],
-                "payments": [
-                    {
-                        "payment_id": "pay-001",
-                        "contract_id": "contract-884",
-                        "client_id": "client-923",
-                        "due_date": "2026-07-01T00:00:00+02:00",
-                        "paid_at": "2026-07-01T12:00:00+02:00",
-                        "days_late": 0,
-                        "amount_due": 20,
-                        "amount_paid": 20,
-                        "status": "paid",
-                        "method": "orange_money",
-                    },
-                    {
-                        "payment_id": "pay-002",
-                        "contract_id": "contract-884",
-                        "client_id": "client-923",
-                        "due_date": "2026-08-01T00:00:00+02:00",
-                        "paid_at": "2026-08-14T12:00:00+02:00",
-                        "days_late": 13,
-                        "amount_due": 20,
-                        "amount_paid": 20,
-                        "status": "late",
-                        "method": "orange_money",
-                    },
-                ],
-                "customer": {
-                    "tenure_months": 18,
-                    "active_contracts": 1,
-                    "customer_segment": "residential",
-                },
-                "contract": {
-                    "periodic_amount_usd": 20,
-                    "status": "active",
-                },
-                "data_quality": {
-                    "identity_resolved": True,
                     "missing_features": [],
                     "warnings": [],
                 },
@@ -408,51 +221,27 @@ class CustomerDecisionFromTelemetryRequest(CustomerDecisionRequest):
         },
     }
 
+    schema_version: str = Field(..., description="Version du payload device.")
+    request_id: str = Field(..., description="Identifiant de correlation technique.")
+    as_of: str = Field(..., description="Instant de construction du snapshot.")
+    device_id: str = Field(..., description="Identifiant du boitier IoT.")
+    kit_id: str | None = Field(None, description="Identifiant du kit si connu.")
     records: list[TelemetryRecord] = Field(
         ...,
         min_length=1,
-        description="Fenetre de telemetrie brute utilisee pour calculer maintenance/security avant scoring client.",
+        description="Fenetre de telemetrie brute utilisee pour calculer maintenance et securite.",
     )
+    context: dict[str, Any] = Field(default_factory=dict)
+    data_quality: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_backend_contract(self) -> "CustomerDecisionFromTelemetryRequest":
-        identity = self.identity
-        if identity.resolution_status == "resolved":
-            required = [identity.client_id, identity.kit_id, identity.device_id]
-            if any(not value for value in required):
-                raise ValueError("resolved identity requires client_id, kit_id and device_id")
+    def validate_device_records(self) -> "DeviceTelemetryEvaluationRequest":
         for record in self.records:
-            if record.device_id != identity.device_id or record.kit_id != identity.kit_id:
-                raise ValueError("all telemetry records must match identity.kit_id and identity.device_id")
+            if record.device_id != self.device_id:
+                raise ValueError("all telemetry records must match device_id")
+            if self.kit_id and record.kit_id != self.kit_id:
+                raise ValueError("all telemetry records must match kit_id")
         return self
-
-
-
-class BackendResolvedEventsSyncRequest(BaseModel):
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "backend_base_url": "http://127.0.0.1:9000",
-                "cursor": None,
-                "limit": 100,
-                "ack": True,
-            }
-        }
-    }
-
-    backend_base_url: str = Field(..., description="URL racine du backend metier qui expose les snapshots resolus.")
-    cursor: str | None = Field(None, description="Curseur de pagination fourni par le backend metier.")
-    limit: int = Field(100, ge=1, le=500, description="Nombre maximum de snapshots resolus a consommer.")
-    ack: bool = Field(True, description="Envoyer un ACK au backend apres chaque traitement.")
-    resolved_events_path: str = Field(
-        "/v1/ai/resolved-telemetry-events",
-        description="Chemin backend qui liste les snapshots resolus.",
-    )
-    ack_path_template: str = Field(
-        "/v1/ai/resolved-telemetry-events/{request_id}/ack",
-        description="Chemin backend pour confirmer le traitement d'un snapshot.",
-    )
-    timeout_seconds: float = Field(15.0, gt=0, le=120, description="Timeout HTTP vers le backend metier.")
 
 
 class TelemetryPredictionRequest(BaseModel):
@@ -508,7 +297,7 @@ class KitConsoleChatRequest(BaseModel):
             "example": {
                 "message": "Pourquoi ce kit est critique ?",
                 "context": {
-                    "payload": {"identity": {"kit_id": "kit-demo-001"}},
+                    "payload": {"kit_id": "kit-demo-001", "device_id": "device-demo-001"},
                     "prediction": {"decision": {"priority": "high"}},
                 },
             },
@@ -641,38 +430,47 @@ class SolarQuestionRequest(BaseModel):
 
 
 def _records_to_dicts(payload: TelemetryPredictionRequest) -> list[dict]:
-    return [_model_to_dict(record) for record in payload.records]
+    return _normalize_records_for_prediction(
+        [_model_to_dict(record) for record in payload.records],
+        as_of=datetime.now(UTC).replace(microsecond=0).isoformat(),
+    )
 
 
-def _customer_records_to_dicts(payload: CustomerDecisionFromTelemetryRequest) -> list[dict]:
-    return [_model_to_dict(record) for record in payload.records]
-
-
-def _payment_records_to_dicts(payload: CustomerDecisionRequest) -> list[dict[str, Any]]:
-    return [_model_to_dict(record) for record in payload.payments]
+def _device_records_to_dicts(payload: DeviceTelemetryEvaluationRequest) -> list[dict]:
+    return _normalize_records_for_prediction(
+        [_model_to_dict(record) for record in payload.records],
+        as_of=payload.as_of,
+    )
 
 
 def _model_to_dict(model: BaseModel) -> dict:
     if hasattr(model, "model_dump"):
-        return model.model_dump()
-    return model.dict()
+        return model.model_dump(exclude_none=True)
+    return model.dict(exclude_none=True)
 
 
-def _payment_features_from_payload(payload: CustomerDecisionRequest) -> dict[str, Any]:
-    # Le backend envoie les paiements bruts; cette couche Data fabrique les features consommees par le scoring.
-    raw_payments = _payment_records_to_dicts(payload)
-    computed = build_payment_features(raw_payments, as_of=payload.as_of)
-    if computed:
-        return {**payload.payment, **computed}
-    return dict(payload.payment)
+def _as_unix_seconds(value: str | None) -> str:
+    if not value:
+        return str(int(datetime.now(UTC).timestamp()))
+    if value.strip().isdigit():
+        return value.strip()
+    try:
+        return str(int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()))
+    except ValueError:
+        return str(int(datetime.now(UTC).timestamp()))
 
 
-def _customer_decision_snapshot(payload: CustomerDecisionRequest) -> dict[str, Any]:
-    # Snapshot auditable: on conserve les paiements bruts et on injecte les features calculees.
-    snapshot = _model_to_dict(payload)
-    snapshot["raw_payments"] = snapshot.pop("payments", [])
-    snapshot["payment"] = _payment_features_from_payload(payload)
-    return snapshot
+def _normalize_records_for_prediction(records: list[dict[str, Any]], *, as_of: str) -> list[dict[str, Any]]:
+    # Les modeles trient encore les fenetres par event_time; le frontend n'a plus a fournir ce champ.
+    base_timestamp = int(_as_unix_seconds(as_of))
+    normalized: list[dict[str, Any]] = []
+    total = len(records)
+    for index, record in enumerate(records):
+        item = dict(record)
+        if not item.get("event_time"):
+            item["event_time"] = str(base_timestamp - ((total - index - 1) * 300))
+        normalized.append(item)
+    return normalized
 
 
 def _feature_snapshot_from_records(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -693,11 +491,9 @@ def _feature_snapshot_from_records(records: list[dict[str, Any]]) -> dict[str, A
 
 def _prediction_window_from_stored_history(
     records: list[dict[str, Any]],
-    *,
-    identity: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     # On stocke d'abord les nouvelles mesures, puis on relit l'historique pour predire sur une tendance.
-    new_records, duplicate_records = realtime_store.insert_telemetry_records(records, identity=identity)
+    new_records, duplicate_records = realtime_store.insert_telemetry_records(records)
     latest = records[-1]
     device_id = str(latest.get("device_id", "unknown"))
     history_records = realtime_store.recent_records_for_device(device_id, limit=telemetry_service.sliding_window_size)
@@ -709,16 +505,15 @@ def _prediction_window_from_stored_history(
     }
 
 
-def _customer_decision_context_from_telemetry(payload: CustomerDecisionFromTelemetryRequest) -> dict:
-    # Flux complet: telemetrie brute -> historique -> predictions kit -> contexte de scoring client.
-    incoming_records = _customer_records_to_dicts(payload)
+def _evaluate_device_telemetry_payload(payload: DeviceTelemetryEvaluationRequest) -> dict:
+    # Flux complet device-only: telemetrie brute -> historique -> predictions kit -> persistence.
+    incoming_records = _device_records_to_dicts(payload)
     for record in incoming_records:
         validation = validate_prediction_payload(record)
         if not validation["valid"]:
             raise HTTPException(status_code=400, detail=validation)
 
-    provided_identity = _model_to_dict(payload.identity)
-    records, storage_summary = _prediction_window_from_stored_history(incoming_records, identity=provided_identity)
+    records, storage_summary = _prediction_window_from_stored_history(incoming_records)
     latest = records[-1]
     maintenance_prediction = engine.infer_maintenance(records)
     security_prediction = engine.infer_security(records)
@@ -739,7 +534,6 @@ def _customer_decision_context_from_telemetry(payload: CustomerDecisionFromTelem
         security_prediction=security_prediction,
         alert=alert_payload,
         feature_snapshot=feature_snapshot,
-        identity=provided_identity,
     )
     kit_intelligence = build_kit_intelligence(
         records=records,
@@ -750,61 +544,45 @@ def _customer_decision_context_from_telemetry(payload: CustomerDecisionFromTelem
     )
     maintenance_prediction = kit_intelligence["maintenance"]["raw_prediction"]
     security_prediction = kit_intelligence["security"]["raw_prediction"]
-    identity_status = provided_identity.get("resolution_status")
 
     data_quality = dict(payload.data_quality)
     if data_quality.get("telemetry_age_seconds") is None:
         data_quality["telemetry_age_seconds"] = _telemetry_age_seconds(payload.as_of, latest.get("event_time"))
     data_quality.setdefault("missing_features", [])
     data_quality.setdefault("warnings", [])
-    if identity_status != "resolved":
-        # L'IA ne resout pas l'identite; elle degrade/bloque la decision si le backend ne l'a pas fait.
-        data_quality["identity_resolved"] = False
-        data_quality["missing_features"].append("identity")
-        data_quality["warnings"].append(
-            "Identity must be resolved by the backend before customer decision evaluation."
-        )
 
-    context = {
+    return {
         "schema_version": payload.schema_version,
         "request_id": payload.request_id,
         "as_of": payload.as_of,
-        "identity": provided_identity,
-        "telemetry": {
-            "event_time": latest.get("event_time"),
-            "received_at": latest.get("received_at"),
-            "battery_voltage_v": latest.get("battery_voltage_v"),
-            "state_of_charge_pct": latest.get("state_of_charge_pct"),
-            "state_of_health_pct": latest.get("state_of_health_pct"),
-            "solar_power_w": latest.get("solar_power_w"),
-            "load_power_w": latest.get("load_power_w"),
+        "device_id": payload.device_id,
+        "kit_id": payload.kit_id or latest.get("kit_id"),
+        "status": "processed",
+        "device_snapshot": {
+            "latest_telemetry": latest,
+            "context": {
+                **payload.context,
+                "region": payload.context.get("region", latest.get("region")),
+                "season": payload.context.get("season", latest.get("season")),
+                "day_period": payload.context.get("day_period", latest.get("day_period")),
+                "ambient_temperature_c": payload.context.get(
+                    "ambient_temperature_c",
+                    latest.get("ambient_temperature_c"),
+                ),
+            },
         },
-        "context": {
-            **payload.context,
-            "region": payload.context.get("region", latest.get("region")),
-            "season": payload.context.get("season", latest.get("season")),
-            "day_period": payload.context.get("day_period", latest.get("day_period")),
-            "ambient_temperature_c": payload.context.get(
-                "ambient_temperature_c",
-                latest.get("ambient_temperature_c"),
-            ),
-        },
-        "payment": _payment_features_from_payload(payload),
-        "raw_payments": _payment_records_to_dicts(payload),
-        "customer": payload.customer,
-        "contract": payload.contract,
-        "kit_intelligence": {**kit_intelligence, **kit_intelligence["legacy_flat"], **payload.kit_intelligence},
-        "data_quality": data_quality,
-    }
-    return {
-        "context": context,
         "maintenance_prediction": maintenance_prediction,
         "security_prediction": security_prediction,
         "kit_intelligence": kit_intelligence,
-        "stored_prediction": stored_prediction,
-        "storage_summary": storage_summary,
-        "feature_snapshot": feature_snapshot,
-        "identity_status": identity_status or "unresolved",
+        "alert": alert_payload,
+        "trend_source": {
+            **storage_summary,
+            "table": "telemetry_records",
+            "prediction_history_table": "prediction_history",
+            "stored_prediction_id": stored_prediction["prediction_id"],
+            "feature_snapshot": feature_snapshot,
+        },
+        "data_quality": data_quality,
     }
 
 
@@ -1049,7 +827,6 @@ def _demo_entities() -> dict:
     alerts = []
     decisions = []
     interventions = []
-    customers = []
     model_runs = []
     all_records = []
     for index, (kit_id, records) in enumerate(sorted(windows.items()), start=1):
@@ -1066,7 +843,6 @@ def _demo_entities() -> dict:
         category = _decision_category(maintenance_prediction, security_prediction)
         labels = _human_label_for_category(category)
         feature_snapshot = _feature_snapshot(records)
-        client_id = f"client-{index:03d}"
         decision_id = f"decision-{index:03d}"
         alert_id = f"alert-{index:03d}"
         intervention_id = f"intervention-{index:03d}"
@@ -1092,8 +868,6 @@ def _demo_entities() -> dict:
             "serial_number": record["serial_number"],
             "model": record.get("device_model", "djua-solar-v1"),
             "installation_type": record.get("installation_type"),
-            "client_id": client_id,
-            "client_name": f"Client demonstration {index}",
             "region": record.get("region"),
             "city": "Zone pilote",
             "country": "CI",
@@ -1126,7 +900,7 @@ def _demo_entities() -> dict:
                 "summary": labels["summary"],
                 "severity": severity,
                 "kit": {"kit_id": kit_id, "label": record["serial_number"]},
-                "client": {"client_id": client_id, "name": f"Client demonstration {index}"},
+                "device": {"device_id": record["device_id"], "kit_id": kit_id},
                 "location": {"country": "CI", "region": record.get("region"), "city": "Zone pilote"},
                 "created_at": record["event_time"],
                 "age_label": "2 min",
@@ -1149,7 +923,7 @@ def _demo_entities() -> dict:
             "created_at": record["event_time"],
             "updated_at": record["event_time"],
             "kit_id": kit_id,
-            "client_id": client_id,
+            "device_id": record["device_id"],
             "region": record.get("region"),
             "model": {
                 "name": "LocalInferenceEngine",
@@ -1185,23 +959,9 @@ def _demo_entities() -> dict:
             "estimated_duration_minutes": 90 if category == "security" else 45,
             "estimated_cost": {"amount": 42 if category == "security" else 18, "currency": "EUR", "method": "demo_assumption_not_model_output"},
             "required_skills": ["diagnostic_iot", "controle_gps"] if category == "security" else ["maintenance_batterie"],
-            "checklist": ["Verifier l'identite du kit", "Controler le boitier", "Comparer la position attendue"],
+            "checklist": ["Controler le boitier", "Verifier la connectivite", "Comparer la position attendue"],
             "confidence": 0.8,
             "source": _source("model_derived", "Type et priorite derives de la decision IA; cout et duree sont des hypotheses demo.", "LocalInferenceEngine"),
-        })
-
-        customers.append({
-            "client_id": client_id,
-            "name": f"Client demonstration {index}",
-            "risk_score": score,
-            "risk_level": severity,
-            "trend": "up" if severity != "low" else "stable",
-            "model_version": "derived-from-kit-models",
-            "confidence": 0.78,
-            "summary": "Risque client derive du risque IA du kit rattache.",
-            "main_factors": ["kit_model_score", "maintenance_prediction", "security_prediction"],
-            "recommendations": ["Contacter le client", "Verifier la localisation"] if severity in {"critical", "high"} else ["Surveiller"],
-            "source": _source("model_derived", "Aucun modele client separe n'existe encore; score client derive explicitement du score IA du kit.", "LocalInferenceEngine"),
         })
 
     return {
@@ -1211,7 +971,6 @@ def _demo_entities() -> dict:
         "alerts": alerts,
         "decisions": decisions,
         "interventions": interventions,
-        "customers": customers,
         "model_runs": model_runs,
     }
 
@@ -1231,19 +990,6 @@ def _not_found(entity: str, entity_id: str) -> HTTPException:
             }
         },
     )
-
-
-def _with_persisted_customer_decision(input_snapshot: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
-    stored = realtime_store.save_customer_decision(input_snapshot=input_snapshot, result=result)
-    return {
-        **result,
-        "persistence": {
-            "stored": True,
-            "table": "customer_decision_history",
-            "decision_id": stored["decision_id"],
-            "created_at": stored["created_at"],
-        },
-    }
 
 
 @app.get(
@@ -1649,58 +1395,31 @@ def _live_state_summary(state: dict) -> dict:
 def _kit_console_context_summary(context: dict[str, Any]) -> dict[str, Any]:
     requested_domain = context.get("requested_domain") or "kit_diagnostic"
     payload = context.get("kit_payload") or context.get("payload") or {}
-    kit_prediction = context.get("kit_prediction") or {}
-    legacy_prediction = context.get("prediction") or {}
-    client_scoring = context.get("client_scoring") or {}
-    client_scoring_payload = context.get("client_scoring_payload") or {}
-    prediction = kit_prediction or legacy_prediction
+    prediction = context.get("kit_prediction") or context.get("prediction") or {}
     records = payload.get("records") or []
     latest = records[-1] if records else {}
-    payments = client_scoring_payload.get("payments") or payload.get("payments") or []
     kit_intelligence = prediction.get("kit_intelligence") or {}
-    kit_source = client_scoring.get("kit_intelligence_source") or prediction.get("kit_intelligence_source") or {}
     maintenance = (
-        kit_source.get("maintenance_prediction")
-        or (kit_intelligence.get("maintenance") or {}).get("raw_prediction")
+        (kit_intelligence.get("maintenance") or {}).get("raw_prediction")
         or prediction.get("maintenance_prediction")
         or {}
     )
     security = (
-        kit_source.get("security_prediction")
-        or (kit_intelligence.get("security") or {}).get("raw_prediction")
+        (kit_intelligence.get("security") or {}).get("raw_prediction")
         or prediction.get("security_prediction")
         or {}
     )
-    kit_scores = prediction.get("scores") or {}
-    client_scores = client_scoring.get("scores") or {}
-    scores = client_scores if requested_domain == "client_scoring" and client_scores else kit_scores
-    decision = (
-        client_scoring.get("decision")
-        if requested_domain == "client_scoring" and client_scoring.get("decision")
-        else prediction.get("decision") or client_scoring.get("decision") or {}
-    )
+    scores = prediction.get("scores") or {}
     return {
         "requested_domain": requested_domain,
-        "identity": payload.get("identity") or prediction.get("identity") or {},
-        "customer": client_scoring_payload.get("customer") or payload.get("customer") or {},
-        "contract": client_scoring_payload.get("contract") or payload.get("contract") or {},
-        "payments": payments,
-        "payment_summary": _kit_console_payment_summary(payments),
+        "device": {
+            "device_id": payload.get("device_id") or latest.get("device_id") or prediction.get("device_id"),
+            "kit_id": payload.get("kit_id") or latest.get("kit_id") or prediction.get("kit_id"),
+        },
         "latest_telemetry": latest,
         "scores": scores,
-        "kit_scores": kit_scores,
-        "client_scores": client_scores,
-        "score_explanation_contract": {
-            "client_value": "Score client calcule depuis le profil client, anciennete, contrats et contexte metier.",
-            "payment_risk": "Score a expliquer uniquement depuis payments[]: retards, impayes, echecs, montants et dates de paiement.",
-            "operational_risk": "Score a expliquer depuis les predictions maintenance/securite et la telemetrie du kit.",
-            "intervention_priority": "Score final combinant payment_risk, operational_risk, valeur client et decision.",
-            "important_rule": "Ne jamais justifier payment_risk par la tension batterie, la temperature, le mouvement ou le boitier ouvert.",
-        },
-        "decision": decision,
-        "client_decision": client_scoring.get("decision") or {},
-        "client_data_quality": client_scoring.get("data_quality") or {},
-        "client_confidence": client_scoring.get("confidence"),
+        "kit_scores": scores,
+        "decision": prediction.get("decision") or {},
         "maintenance_prediction": maintenance,
         "security_prediction": security,
         "main_factors": _kit_console_risk_factors(latest, maintenance, security, scores),
@@ -1709,113 +1428,25 @@ def _kit_console_context_summary(context: dict[str, Any]) -> dict[str, Any]:
 
 def _kit_console_focused_context(summary: dict[str, Any]) -> dict[str, Any]:
     domain = summary.get("requested_domain") or "kit_diagnostic"
-    base = {
+    context = {
         "requested_domain": domain,
-        "identity": summary.get("identity") or {},
-        "score_explanation_contract": summary.get("score_explanation_contract") or {},
-    }
-    if domain == "client_scoring":
-        return {
-            **base,
-            "customer": summary.get("customer") or {},
-            "contract": summary.get("contract") or {},
-            "payments": summary.get("payments") or [],
-            "payment_summary": summary.get("payment_summary") or {},
-            "client_scores": summary.get("client_scores") or summary.get("scores") or {},
-            "client_decision": summary.get("client_decision") or summary.get("decision") or {},
-            "client_data_quality": summary.get("client_data_quality") or {},
-            "client_confidence": summary.get("client_confidence"),
-            "operational_evidence": {
-                "kit_scores": summary.get("kit_scores") or {},
-                "maintenance_prediction": summary.get("maintenance_prediction") or {},
-                "security_prediction": summary.get("security_prediction") or {},
-                "main_factors": summary.get("main_factors") or [],
-            },
-            "strict_scope": (
-                "Explique le scoring client en separant valeur client, risque paiement, risque operationnel "
-                "et priorite. Ne justifie payment_risk qu'avec payments/payment_summary."
-            ),
-        }
-    if domain == "maintenance":
-        return {
-            **base,
-            "latest_telemetry": summary.get("latest_telemetry") or {},
-            "maintenance_prediction": summary.get("maintenance_prediction") or {},
-            "kit_scores": summary.get("kit_scores") or summary.get("scores") or {},
-            "main_factors": summary.get("main_factors") or [],
-            "strict_scope": "Reponds uniquement sur la maintenance du kit. Ne parle pas du scoring client ni du paiement.",
-        }
-    if domain == "security":
-        return {
-            **base,
-            "latest_telemetry": summary.get("latest_telemetry") or {},
-            "security_prediction": summary.get("security_prediction") or {},
-            "kit_scores": summary.get("kit_scores") or summary.get("scores") or {},
-            "main_factors": summary.get("main_factors") or [],
-            "strict_scope": "Reponds uniquement sur la securite du kit. Ne parle pas du scoring client ni du paiement.",
-        }
-    return {
-        **base,
+        "device": summary.get("device") or {},
         "latest_telemetry": summary.get("latest_telemetry") or {},
         "maintenance_prediction": summary.get("maintenance_prediction") or {},
         "security_prediction": summary.get("security_prediction") or {},
         "kit_scores": summary.get("kit_scores") or summary.get("scores") or {},
         "decision": summary.get("decision") or {},
         "main_factors": summary.get("main_factors") or [],
-        "strict_scope": "Reponds sur le diagnostic kit. N'utilise le scoring client que si la question le demande explicitement.",
     }
+    if domain == "maintenance":
+        context["strict_scope"] = "Reponds uniquement sur la maintenance du kit avec les records et predictions fournis."
+    elif domain == "security":
+        context["strict_scope"] = "Reponds uniquement sur la securite du kit avec les records et predictions fournis."
+    else:
+        context["strict_scope"] = "Reponds sur le diagnostic technique du kit uniquement."
+    return context
 
 
-def _kit_console_number(payload: dict[str, Any], name: str) -> float:
-    value = payload.get(name)
-    if value in (None, ""):
-        return 0.0
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _kit_console_payment_summary(payments: list[dict[str, Any]]) -> dict[str, Any]:
-    total = len(payments)
-    statuses = [str(payment.get("status") or "").lower() for payment in payments]
-    paid = sum(1 for status in statuses if status in {"paid", "completed", "success", "successful"})
-    days_late_values = [_kit_console_number(payment, "days_late") for payment in payments]
-    late = sum(
-        1
-        for status, days_late in zip(statuses, days_late_values)
-        if status == "late" or days_late > 0
-    )
-    missed = sum(1 for status in statuses if status == "missed")
-    failed = sum(1 for status in statuses if status in {"failed", "rejected"})
-    outstanding = sum(
-        max(float(payment.get("amount_due") or 0) - float(payment.get("amount_paid") or 0), 0)
-        for payment in payments
-    )
-    return {
-        "payments_count": total,
-        "paid_count": paid,
-        "late_count": late,
-        "missed_count": missed,
-        "failed_count": failed,
-        "payment_success_rate": round(paid / total, 4) if total else None,
-        "average_days_late": round(sum(days_late_values) / late, 2) if late else 0.0,
-        "outstanding_balance": round(outstanding, 2),
-        "statuses": statuses,
-    }
-
-
-def _kit_console_is_payment_question(message: str) -> bool:
-    normalized = message.lower()
-    return any(
-        word in normalized
-        for word in ["paiement", "payment", "payeur", "impaye", "impayÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©", "retard", "echeance", "ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©chÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©ance"]
-    )
-
-
-def _kit_console_is_client_question(message: str) -> bool:
-    normalized = message.lower()
-    return any(word in normalized for word in ["client", "scoring", "score client", "valeur client"])
 
 
 def _kit_console_is_technical_question(message: str) -> bool:
@@ -1826,30 +1457,22 @@ def _kit_console_is_technical_question(message: str) -> bool:
             "kit",
             "maintenance",
             "securite",
-            "sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©curitÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©",
             "panne",
             "batterie",
             "reseau",
-            "rÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©seau",
             "boitier",
-            "boÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â®tier",
             "telemetrie",
-            "tÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©lÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©mÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©trie",
             "critique",
         ]
     )
 
 
 def _kit_console_detect_domain(message: str) -> str:
-    if _kit_console_is_client_question(message):
-        return "client_scoring"
-    if _kit_console_is_payment_question(message):
-        return "client_scoring"
     normalized = message.lower()
     if "maintenance" in normalized or "panne" in normalized or "batterie" in normalized:
         return "maintenance"
     if _kit_console_is_technical_question(message) and any(
-        word in normalized for word in ["securite", "sÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©curitÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©", "boitier", "boÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â®tier", "tamper", "mouvement"]
+        word in normalized for word in ["securite", "security", "boitier", "tamper", "mouvement", "geofence", "sabotage", "fraude"]
     ):
         return "security"
     return "kit_diagnostic"
@@ -1889,23 +1512,16 @@ def _kit_console_risk_factors(
 
 def _kit_console_local_chat_answer(message: str, context: dict[str, Any]) -> str:
     summary = _kit_console_context_summary(context)
-    identity = summary["identity"]
+    device = summary["device"]
     decision = summary["decision"]
     scores = summary["scores"]
     maintenance = summary["maintenance_prediction"]
     security = summary["security_prediction"]
     factors = summary["main_factors"]
-    payment_summary = summary["payment_summary"]
-    if not identity and not context.get("prediction"):
+    if not device.get("device_id") and not device.get("kit_id") and not context.get("prediction") and not context.get("kit_prediction"):
         return "Lance d'abord une prediction dans la console. Ensuite je pourrai expliquer le risque du kit saisi."
-    if _kit_console_is_client_question(message) and not summary.get("client_scores"):
-        return (
-            "Lance d'abord le scoring client. Ensuite je pourrai expliquer separement la valeur client, "
-            "le risque paiement, le risque operationnel du kit et la priorite d'intervention."
-        )
 
-    kit_id = identity.get("kit_id", "ce kit")
-    client_id = identity.get("client_id", "ce client")
+    kit_id = device.get("kit_id", "ce kit")
     priority = decision.get("priority", "non definie")
     action = decision.get("recommended_action", "surveillance")
     intro = (
@@ -1918,30 +1534,7 @@ def _kit_console_local_chat_answer(message: str, context: dict[str, Any]) -> str
         f"securite={round(float(security.get('suspicious_activity_score') or 0) * 100)}%, "
         f"operationnel={scores.get('operational_risk', 'n/a')}/100."
     )
-    client_score_line = (
-        " Scores client: "
-        f"valeur_client={scores.get('client_value', 'n/a')}/100, "
-        f"risque_paiement={scores.get('payment_risk', 'n/a')}/100, "
-        f"risque_operationnel={scores.get('operational_risk', 'n/a')}/100, "
-        f"priorite_intervention={scores.get('intervention_priority', 'n/a')}/100."
-    )
-    payment_line = (
-        f" Le risque paiement de {scores.get('payment_risk', 'n/a')}/100 vient de payments[] pour {client_id}: "
-        f"{payment_summary['payments_count']} paiement(s), "
-        f"{payment_summary['late_count']} retard(s), "
-        f"{payment_summary['missed_count']} impaye(s), "
-        f"{payment_summary['failed_count']} echec(s), "
-        f"taux de succes={payment_summary['payment_success_rate']}, "
-        f"solde restant={payment_summary['outstanding_balance']}."
-    )
     technical_factor_line = " Les raisons techniques principales du kit sont: " + "; ".join(factors) + "."
-    if _kit_console_is_payment_question(message):
-        return (
-            payment_line
-            + " Les signaux techniques du kit ne justifient pas ce score paiement; ils justifient plutot le risque operationnel."
-        )
-    if _kit_console_is_client_question(message):
-        return intro + client_score_line + " " + payment_line.strip() + technical_factor_line
     if "que faire" in message.lower() or "action" in message.lower():
         return intro + " Je proposerais de verifier d'abord les facteurs les plus graves: " + "; ".join(factors) + "."
     return intro + risk_line + technical_factor_line
@@ -1975,11 +1568,8 @@ def demo_kit_console_chat(payload: KitConsoleChatRequest) -> dict:
                     f"Le domaine detecte est {focused_context.get('requested_domain')}. "
                     "1) si la question parle du kit critique, de maintenance, securite, panne, batterie, reseau, "
                     "boitier ou telemetrie, explique uniquement avec latest_telemetry, maintenance_prediction, "
-                    "security_prediction, main_factors et operational_risk. Ne parle pas du paiement dans ce cas. "
-                    "2) si la question parle de risque paiement/payment_risk, explique uniquement avec payment_summary "
-                    "et payments[]. N'utilise pas la batterie, la temperature, le mouvement ou le boitier pour justifier le paiement. "
-                    "3) si la question parle du scoring client global, explique separement valeur client, paiement, operationnel "
-                    "et priorite intervention. Si un champ manque, dis qu'il manque."
+                    "security_prediction, main_factors et operational_risk. "
+                    "2) limite la reponse au diagnostic technique du device."
                 ),
                 focused_context,
             )
@@ -2010,7 +1600,7 @@ def demo_kit_console_chat(payload: KitConsoleChatRequest) -> dict:
     "/frontend/live/ui",
     summary="Construire le payload live complet pour l'interface",
     description=(
-        "Endpoint agrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©gÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© pour une interface temps reel: command center, decisions, digital twin, flotte, "
+        "Endpoint agrÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â©gÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â© pour une interface temps reel: command center, decisions, digital twin, flotte, "
         "interventions, profil client, performance et administration."
     ),
 )
@@ -2027,12 +1617,7 @@ def frontend_live_ui() -> dict:
         for summary in sorted_summaries
         for item in realtime_store.prediction_history(summary["device_id"], limit=5)
     ]
-    customers = realtime_store.list_customers(limit=500)
-    customer_decisions = realtime_store.list_customer_decisions(limit=100)
     high_priority = [item for item in sorted_summaries if _live_priority_rank(item["risk_level"]) >= 2]
-    priority_customer_decisions = [
-        item for item in customer_decisions if _live_priority_rank(item.get("priority")) >= 2
-    ]
     total_energy_generated_kwh = round(
         sum(float(item["energy"]["energy_generated_wh"] or 0) for item in summaries) / 1000,
         2,
@@ -2054,8 +1639,6 @@ def frontend_live_ui() -> dict:
             "summary": [
                 {"id": "devices", "label": "Devices supervises", "value": len(summaries), "unit": "devices"},
                 {"id": "priority_alerts", "label": "Alertes a traiter", "value": len(high_priority), "unit": "alerts"},
-                {"id": "customers", "label": "Clients connus", "value": len(customers), "unit": "customers"},
-                {"id": "customer_decisions", "label": "Decisions client", "value": len(customer_decisions), "unit": "decisions"},
                 {"id": "offline", "label": "Devices hors ligne", "value": offline_count, "unit": "devices"},
                 {"id": "battery_health", "label": "Sante batterie moyenne", "value": average_health, "unit": "%"},
                 {"id": "energy_generated", "label": "Energie generee", "value": total_energy_generated_kwh, "unit": "kWh"},
@@ -2066,8 +1649,7 @@ def frontend_live_ui() -> dict:
         },
         "decision_detail": {
             "technical_predictions": latest_predictions,
-            "customer_decisions": customer_decisions,
-            "open_decision": customer_decisions[0] if customer_decisions else (latest_predictions[0] if latest_predictions else None),
+            "open_decision": latest_predictions[0] if latest_predictions else None,
         },
         "digital_twin": {
             "kits": sorted_summaries,
@@ -2108,16 +1690,8 @@ def frontend_live_ui() -> dict:
                 "intervention_types": ["battery_check", "security_check", "connectivity_check", "solar_panel_check"],
             },
         },
-        "customer_profile": {
-            "customers": customers,
-            "recent_decisions": customer_decisions[:10],
-            "priority_decisions": priority_customer_decisions[:10],
-            "available_filters": ["client_id", "kit_id", "device_id", "priority", "customer_segment"],
-            "source": "customers + customer_decision_history",
-        },
         "performance": {
             "model_runs": len(latest_predictions),
-            "customer_decision_runs": len(customer_decisions),
             "alerts_by_level": {
                 level: sum(1 for item in summaries if item["risk_level"] == level)
                 for level in ["critical", "high", "medium", "low"]
@@ -2131,8 +1705,6 @@ def frontend_live_ui() -> dict:
                 "telemetry_records",
                 "prediction_history",
                 "device_state",
-                "customers",
-                "customer_decision_history",
             ],
             "ingestion_contract": "schemas/telemetry.v1.schema.json",
         },
@@ -2295,7 +1867,6 @@ def frontend_create_intervention(
     if decision is None:
         raise _not_found("decision", decision_id)
     kit = next(item for item in demo["kits"] if item["kit_id"] == decision["kit_id"])
-    customer = next(item for item in demo["customers"] if item["client_id"] == decision["client_id"])
     recommendation = next(item for item in demo["interventions"] if item["decision_id"] == decision_id)
     related_alert = next((item for item in demo["alerts"] if item["decision_id"] == decision_id), None)
     priority = recommendation["priority"]
@@ -2312,14 +1883,13 @@ def frontend_create_intervention(
             "decision": decision,
             "alert": related_alert,
             "kit": kit,
-            "customer": customer,
             "source": _source("model_derived", "Contexte pre-rempli depuis la decision IA et le kit rattache.", "LocalInferenceEngine"),
         },
         "draft": {
             "intervention_id": recommendation["intervention_id"],
             "decision_id": decision_id,
             "kit_id": kit["kit_id"],
-            "client_id": customer["client_id"],
+            "device_id": kit["device_id"],
             "type": recommendation["recommended_type"],
             "priority": priority,
             "urgency": recommendation["urgency"],
@@ -2464,40 +2034,6 @@ def frontend_fleet() -> dict:
 
 
 @app.get(
-    "/frontend/customers/{client_id}/risk-profile",
-    summary="Payload frontend du profil risque client",
-    description="Retourne le profil client de demonstration, le risque paiement non branche, le risque kit et les recommandations.",
-)
-def frontend_customer_risk_profile(
-    client_id: str = Path(
-        ...,
-        description="Identifiant client lie a un kit dans les donnees de demonstration.",
-        examples=["client-001"],
-    )
-) -> dict:
-    demo = _demo_entities()
-    customer = next((item for item in demo["customers"] if item["client_id"] == client_id), None)
-    if customer is None:
-        raise _not_found("client", client_id)
-    kit = next(item for item in demo["kits"] if item["client_id"] == client_id)
-    records = demo["windows"][kit["kit_id"]]
-    latest = records[-1]
-    return {
-        "meta": {
-            "schema_version": "customer-risk.v1",
-            "generated_at": DEMO_NOW,
-            "data_mode": "synthetic_demo",
-            "ai_traceability": "Il n'existe pas encore de modele client dedie; le risque client est explicitement derive des modeles kit maintenance/securite.",
-        },
-        "customer": customer,
-        "payment_risk": {"score": None, "level": "not_available", "late_payments": None, "amount_due": None, "trend": "not_available", "source": _source("not_available", "Aucun modele paiement ni donnees paiement branchees dans ce MVP.")},
-        "consumption": {"average_wh": round(sum(float(record["energy_consumed_wh"]) for record in records) / len(records), 2), "trend": "stable", "anomaly": latest["abnormal_consumption_detected"], "comparison": "calcule uniquement sur la fenetre du kit", "source": _source("telemetry_derived", "Moyenne energy_consumed_wh sur les records du kit.")},
-        "kit_risk": {"kit_moved": latest["movement_detected"], "kit_opened": latest["enclosure_opened"], "offline": latest["connection_status"] == "disconnected", "model_score": kit["model_score"], "maintenance_prediction": kit["model_outputs"]["maintenance"], "security_prediction": kit["model_outputs"]["security"], "source": _source("model_output", "Risque client rattache aux predictions du kit.", "LocalInferenceEngine")},
-        "recommendations": [{"label": item, "justification": "Action proposee selon le score client et les signaux kit."} for item in customer["recommendations"]],
-    }
-
-
-@app.get(
     "/frontend/performance",
     summary="Payload frontend performance operationnelle et IA",
     description="Retourne indicateurs de performance, modeles, impact financier demo, qualite service et limites connues.",
@@ -2568,188 +2104,32 @@ def frontend_realtime_events() -> dict:
     }
 
 
-@app.get(
-    "/scoring/customers/{phone}",
-    summary="Score ML du risque client depuis l'API externe",
-    description=(
-        "Appelle /api/external/scoring-data/{phone}, transforme le profil client et l'historique "
-        "de paiement en features ML, puis retourne un score de risque a 90 jours."
-    ),
-)
-def customer_scoring(
-    phone: str = Path(..., description="Numero Orange Money identifiant le client.", examples=["0848451555"]),
-    explain_with_llm: bool = Query(
-        False,
-        description="Si true, demande une explication detaillee a OpenAI. Sinon explication locale deterministe.",
-    ),
-) -> dict:
-    try:
-        return _customer_scoring_service().score_from_external_api(phone, explain_with_llm=explain_with_llm)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
 @app.post(
-    "/v1/customer/evaluate",
-    summary="Evaluer une decision client multidimensionnelle",
+    "/v1/devices/evaluate-from-telemetry",
+    summary="Evaluer un device depuis la telemetrie brute",
     description=(
-        "Consomme un snapshot Backend -> IA deja resolu cote identite et retourne les dimensions "
-        "Client Value, Payment Risk, Operational Risk et Intervention Priority."
+        "Calcule les predictions maintenance/securite depuis records[], construit kit_intelligence "
+        "et historise la prediction technique par device."
     ),
 )
-def customer_decision_evaluate(payload: CustomerDecisionRequest) -> dict:
-    # Flux direct: le backend fournit deja kit_intelligence; l'IA calcule et historise la decision client.
-    input_snapshot = _customer_decision_snapshot(payload)
-    decision = _customer_scoring_service().evaluate_customer_context(input_snapshot)
-    return _with_persisted_customer_decision(input_snapshot, decision)
-
-
-def _evaluate_customer_from_telemetry_payload(payload: CustomerDecisionFromTelemetryRequest) -> dict:
-    # Coeur commun: telemetrie backend resolue -> predictions kit -> scoring client -> persistence.
-    assembled = _customer_decision_context_from_telemetry(payload)
-    decision = _customer_scoring_service().evaluate_customer_context(assembled["context"])
-    response = {
-        **decision,
-        "identity_contract": {
-            "status": assembled["identity_status"],
-            "source": "backend_payload",
-            "resolved_by": "backend",
-        },
-        "kit_intelligence_source": {
-            "kind": "model_output",
-            "detail": "maintenance_risk et security_risk calcules depuis records[] par LocalInferenceEngine.",
-            "kit_intelligence": assembled["kit_intelligence"],
-            "maintenance_prediction": assembled["maintenance_prediction"],
-            "security_prediction": assembled["security_prediction"],
-        },
-        "trend_source": {
-            **assembled["storage_summary"],
-            "table": "telemetry_records",
-            "prediction_history_table": "prediction_history",
-            "stored_prediction_id": assembled["stored_prediction"]["prediction_id"],
-            "feature_snapshot": assembled["feature_snapshot"],
-        },
-    }
-    return _with_persisted_customer_decision(assembled["context"], response)
-
-
-def _evaluate_backend_resolved_snapshot(snapshot: dict[str, Any]) -> dict:
-    payload = CustomerDecisionFromTelemetryRequest.model_validate(snapshot)
-    return _evaluate_customer_from_telemetry_payload(payload)
-
-
-@app.post(
-    "/v1/customer/evaluate-from-telemetry",
-    summary="Evaluer une decision client depuis la telemetrie brute",
-    description=(
-        "Calcule les predictions maintenance/securite depuis records[], construit kit_intelligence, "
-        "puis retourne la decision client multidimensionnelle."
-    ),
-)
-def customer_decision_evaluate_from_telemetry(payload: CustomerDecisionFromTelemetryRequest) -> dict:
-    # Flux push: le backend appelle directement l'API IA/Data avec un snapshot resolu.
-    return _evaluate_customer_from_telemetry_payload(payload)
-
-
-@app.post(
-    "/v1/backend-sync/resolved-telemetry-events/run",
-    summary="Consommer les snapshots resolus exposes par le backend metier",
-    description=(
-        "Flux pull: l'API IA/Data appelle le backend metier, traite chaque item via le meme pipeline que "
-        "/v1/customer/evaluate-from-telemetry, puis envoie un ACK technique de traitement."
-    ),
-)
-def backend_resolved_events_sync(payload: BackendResolvedEventsSyncRequest) -> dict:
-    client = BackendResolvedEventsClient(
-        payload.backend_base_url,
-        resolved_events_path=payload.resolved_events_path,
-        ack_path_template=payload.ack_path_template,
-        timeout_seconds=payload.timeout_seconds,
-    )
-    return client.process_resolved_events(
-        processor=_evaluate_backend_resolved_snapshot,
-        cursor=payload.cursor,
-        limit=payload.limit,
-        ack=payload.ack,
-    )
-
-
-@app.get(
-    "/v1/customer/decisions",
-    summary="Lister les decisions client historisees",
-    description="Retourne l'historique des scorings client stockes pour alimenter le frontend.",
-)
-def customer_decision_history(
-    client_id: Annotated[str | None, Query(description="Filtrer par client_id.")] = None,
-    kit_id: Annotated[str | None, Query(description="Filtrer par kit_id.")] = None,
-    device_id: Annotated[str | None, Query(description="Filtrer par device_id.")] = None,
-    limit: Annotated[int, Query(ge=1, le=500, description="Nombre maximum de decisions retournees.")] = 50,
-) -> dict:
-    return {
-        "items": realtime_store.list_customer_decisions(
-            client_id=client_id,
-            kit_id=kit_id,
-            device_id=device_id,
-            limit=limit,
-        )
-    }
-
-
-@app.get(
-    "/v1/customer/decisions/{decision_id}",
-    summary="Lire le detail d'une decision client",
-    description="Retourne le snapshot d'entree et le resultat IA complet pour audit ou affichage frontend.",
-)
-def customer_decision_detail(
-    decision_id: str = Path(..., description="Identifiant retourne par /v1/customer/evaluate*.")
-) -> dict:
-    decision = realtime_store.get_customer_decision(decision_id)
-    if decision is None:
-        raise _not_found("decision", decision_id)
-    return decision
+def device_evaluate_from_telemetry(payload: DeviceTelemetryEvaluationRequest) -> dict:
+    return _evaluate_device_telemetry_payload(payload)
 
 
 @app.get(
     "/v1/predictions",
     summary="Lister les predictions techniques historisees",
-    description="Retourne les predictions maintenance/securite filtrees par client, kit ou device.",
+    description="Retourne les predictions maintenance/securite filtrees par kit ou device.",
 )
 def prediction_history_v1(
-    client_id: Annotated[str | None, Query(description="Filtrer par client_id.")] = None,
     kit_id: Annotated[str | None, Query(description="Filtrer par kit_id.")] = None,
     device_id: Annotated[str | None, Query(description="Filtrer par device_id.")] = None,
     limit: Annotated[int, Query(ge=1, le=500, description="Nombre maximum de predictions retournees.")] = 50,
 ) -> dict:
     return {
         "items": realtime_store.list_predictions(
-            client_id=client_id,
             kit_id=kit_id,
             device_id=device_id,
             limit=limit,
         )
     }
-
-
-@app.get(
-    "/v1/customers",
-    summary="Lister les clients connus cote IA",
-    description="Retourne la vue locale des clients alimentee par les snapshots recus du backend.",
-)
-def customer_profiles(
-    limit: Annotated[int, Query(ge=1, le=500, description="Nombre maximum de clients retournes.")] = 50,
-) -> dict:
-    return {"items": realtime_store.list_customers(limit=limit)}
-
-
-@app.get(
-    "/v1/customers/{client_id}",
-    summary="Lire la fiche client locale cote IA",
-    description="Retourne le dernier snapshot client connu, ses derniers scores et sa derniere decision.",
-)
-def customer_profile_detail(
-    client_id: str = Path(..., description="Identifiant client fourni par le backend metier.")
-) -> dict:
-    customer = realtime_store.get_customer(client_id)
-    if customer is None:
-        raise _not_found("client", client_id)
-    return customer

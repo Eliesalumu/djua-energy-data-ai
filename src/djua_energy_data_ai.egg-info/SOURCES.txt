@@ -1,4 +1,4 @@
-LICENSE
+﻿LICENSE
 README.md
 pyproject.toml
 src/djua_energy/__init__.py
@@ -23,7 +23,6 @@ src/djua_energy/data_quality/rules.py
 src/djua_energy/data_quality/service.py
 src/djua_energy/database/base.py
 src/djua_energy/database/session.py
-src/djua_energy/features/customer_features.py
 src/djua_energy/features/feature_registry.py
 src/djua_energy/features/telemetry_features.py
 src/djua_energy/features/windows.py
@@ -54,10 +53,6 @@ src/djua_energy/pipeline/features.py
 src/djua_energy/pipeline/inference.py
 src/djua_energy/pipeline/synthetic_data.py
 src/djua_energy/pipeline/train.py
-src/djua_energy/scoring/explainability.py
-src/djua_energy/scoring/model.py
-src/djua_energy/scoring/rules.py
-src/djua_energy/scoring/service.py
 src/djua_energy_data_ai.egg-info/PKG-INFO
 src/djua_energy_data_ai.egg-info/SOURCES.txt
 src/djua_energy_data_ai.egg-info/dependency_links.txt

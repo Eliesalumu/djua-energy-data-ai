@@ -17,7 +17,6 @@
     "intervention_id": {"type": "string"},
     "decision_id": {"type": "string"},
     "kit_id": {"type": "string"},
-    "client_id": {"type": "string"},
     "type": {
       "type": "string",
       "enum": ["fraud_check", "preventive_maintenance", "battery_replacement", "connectivity_diagnostic", "installation_visit"]

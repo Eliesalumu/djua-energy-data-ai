@@ -31,9 +31,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
 | `message_type` | string | - | `telemetry` |
 | `device_id` | string | - | Identifiant boitier |
 | `kit_id` | string | - | Identifiant kit solaire |
-| `serial_number` | string | - | Numero de serie fabricant |
-| `event_time` | string | timestamp | Date/heure de mesure |
-| `sequence_number` | integer | - | Numero croissant du message |
 | `battery_voltage_v` | number | V | Tension batterie |
 | `battery_current_a` | number | A | Courant batterie |
 | `battery_power_w` | number | W | Puissance batterie |
@@ -99,9 +96,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
   "message_type": "telemetry",
   "device_id": "device-1",
   "kit_id": "kit-1",
-  "serial_number": "SN-001",
-  "event_time": "1700000000",
-  "sequence_number": 1,
   "battery_voltage_v": 12.4,
   "battery_current_a": 2.1,
   "battery_power_w": 26.0,
@@ -131,9 +125,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
   "message_type": "telemetry",
   "device_id": "device-1",
   "kit_id": "kit-1",
-  "serial_number": "SN-001",
-  "event_time": "1700000000",
-  "sequence_number": 1,
   "battery_voltage_v": 12.4,
   "battery_current_a": 2.1,
   "battery_power_w": 26.0,

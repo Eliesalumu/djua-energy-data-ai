@@ -64,7 +64,6 @@ class SolarAdvisorService:
                 "La recommandation doit etre validee par un technicien avant installation reelle.",
             ],
             "integration_links": {
-                "future_customer_scoring_key": request.customer_id,
                 "future_iot_baseline": {
                     "expected_daily_energy_wh": consumption.total_daily_energy_wh,
                     "expected_peak_power_w": consumption.simultaneous_power_w,

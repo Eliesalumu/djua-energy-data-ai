@@ -26,10 +26,9 @@ Un POST par device est volontaire. L'endpoint actuel calcule la prediction pour 
 Chaque payload contient les champs obligatoires du contrat :
 
 ```text
-message_id, schema_version, message_type, device_id, kit_id, serial_number,
-event_time, sequence_number, battery_voltage_v, battery_current_a,
-battery_power_w, battery_temperature_c, state_of_charge_pct,
-state_of_health_pct
+message_id, schema_version, message_type, device_id, kit_id,
+battery_voltage_v, battery_current_a, battery_power_w,
+battery_temperature_c, state_of_charge_pct, state_of_health_pct
 ```
 
 Le simulateur envoie aussi les variables necessaires aux features IA :

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Question = "",
     [switch]$NoOpenAI,
     [switch]$RequireOpenAI
@@ -13,7 +13,7 @@ $DatasetPath = Join-Path $ProjectRoot "data\generated\mvp_dataset.csv"
 $MaintenanceModelPath = Join-Path $ProjectRoot "artifacts\maintenance_model.joblib"
 $SecurityModelPath = Join-Path $ProjectRoot "artifacts\security_model.joblib"
 $GenerateDataPath = Join-Path $ProjectRoot "scripts\generate_synthetic_data.py"
-$TrainPipelinePath = Join-Path $ProjectRoot "scripts\train_scoring.py"
+
 
 Write-Host ""
 Write-Host "DJUA ENERGY - CHAT IA SURVEILLANCE DU PARC" -ForegroundColor Cyan

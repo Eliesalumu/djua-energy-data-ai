@@ -63,32 +63,21 @@ GET  /telemetry/quarantine
 GET  /telemetry/audit
 POST /maintenance/predict
 POST /security/predict
-POST /v1/customer/evaluate
-POST /v1/customer/evaluate-from-telemetry
-GET  /v1/customers
-GET  /v1/customers/{client_id}
-GET  /v1/customer/decisions
-GET  /v1/customer/decisions/{decision_id}
+POST /v1/devices/evaluate-from-telemetry
 GET  /v1/predictions
 POST /demo/generate
 ```
 
 Les endpoints `/maintenance/predict` et `/security/predict` sont des endpoints directs de test modele. Le flux principal MVP est `/telemetry/analyze`.
 
-Pour la decision client multidimensionnelle, le backend metier doit envoyer une identite client-kit deja resolue
-dans `identity`, avec `resolution_status`. `/v1/customer/evaluate` consomme un snapshot deja enrichi avec
-`kit_intelligence`. Si le backend appelant dispose de la telemetrie brute, utiliser
-`/v1/customer/evaluate-from-telemetry` : l'API calcule alors uniquement maintenance/securite localement avant
-d'appeler le moteur de decision client. L'API IA ne resout pas les affectations client-kit.
-Le backend envoie l'historique brut dans `payments[]`; l'API IA/Data calcule les features paiement (`payment_success_rate`,
-retards, echecs, jours depuis dernier paiement, solde ouvert) avant le scoring.
+Le flux complet compatible frontend est maintenant device-only: `POST /v1/devices/evaluate-from-telemetry`.
+Il attend `device_id`, `kit_id` et `records[]`, calcule maintenance/securite, construit `kit_intelligence`
+et historise la prediction technique.
 
-Les mesures recues par `/telemetry/analyze` et `/v1/customer/evaluate-from-telemetry` sont stockees dans
+Les mesures recues par `/telemetry/analyze` et `/v1/devices/evaluate-from-telemetry` sont stockees dans
 `telemetry_records`, puis les predictions utilisent la fenetre historique recente du device pour capter les tendances.
-Le stockage IA/Data repose sur cinq tables principales: `customers`, `telemetry_records`, `prediction_history`,
-`device_state` et `customer_decision_history`. Les decisions client sont historisees dans
-`customer_decision_history`; les profils clients et derniers scores sont relisibles via `/v1/customers`, et les
-predictions techniques filtrees par client/kit/device via `/v1/predictions`.
+Le stockage IA/Data repose sur trois tables principales: `telemetry_records`, `prediction_history` et `device_state`.
+Les predictions techniques sont relisibles par kit/device via `/v1/predictions`.
 
 ## Demonstrations
 
@@ -163,9 +152,6 @@ Champs obligatoires acceptes par le validateur :
 - `message_type`
 - `device_id`
 - `kit_id`
-- `serial_number`
-- `event_time`
-- `sequence_number`
 - `battery_voltage_v`
 - `battery_current_a`
 - `battery_power_w`
