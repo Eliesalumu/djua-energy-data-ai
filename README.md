@@ -155,7 +155,6 @@ Champs obligatoires acceptes par le validateur :
 - `battery_voltage_v`
 - `battery_current_a`
 - `battery_power_w`
-- `battery_temperature_c`
 - `state_of_charge_pct`
 - `state_of_health_pct`
 

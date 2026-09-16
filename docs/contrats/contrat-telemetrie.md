@@ -34,7 +34,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
 | `battery_voltage_v` | number | V | Tension batterie |
 | `battery_current_a` | number | A | Courant batterie |
 | `battery_power_w` | number | W | Puissance batterie |
-| `battery_temperature_c` | number | C | Temperature batterie |
 | `state_of_charge_pct` | number | % | Niveau de charge |
 | `state_of_health_pct` | number | % | Sante batterie estimee |
 | `region` | string | - | Region ou zone geographique |
@@ -99,7 +98,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
   "battery_voltage_v": 12.4,
   "battery_current_a": 2.1,
   "battery_power_w": 26.0,
-  "battery_temperature_c": 47.0,
   "state_of_charge_pct": 55.0,
   "state_of_health_pct": 90.0,
   "region": "sahel_north",
@@ -128,7 +126,6 @@ Les champs techniques de base restent obligatoires pour accepter un message. Les
   "battery_voltage_v": 12.4,
   "battery_current_a": 2.1,
   "battery_power_w": 26.0,
-  "battery_temperature_c": 47.0,
   "state_of_charge_pct": 55.0,
   "state_of_health_pct": 90.0,
   "region": "sahel_north",

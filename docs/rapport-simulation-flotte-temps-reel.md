@@ -28,7 +28,7 @@ Chaque payload contient les champs obligatoires du contrat :
 ```text
 message_id, schema_version, message_type, device_id, kit_id,
 battery_voltage_v, battery_current_a, battery_power_w,
-battery_temperature_c, state_of_charge_pct, state_of_health_pct
+state_of_charge_pct, state_of_health_pct
 ```
 
 Le simulateur envoie aussi les variables necessaires aux features IA :
@@ -102,7 +102,7 @@ Le simulateur cree par defaut 6 devices :
 ```text
 device-001 : normal
 device-002 : battery_degradation
-device-003 : overheating
+device-003 : voltage_instability
 device-004 : low_solar_input
 device-005 : security_movement
 device-006 : connectivity_loss

@@ -162,8 +162,6 @@ class TelemetryIngestionService:
         return {
             "maintenance": {
                 "battery_voltage_trend": round(float(maintenance_features.get("battery_voltage_trend", 0)), 3),
-                "battery_temp_trend": round(float(maintenance_features.get("battery_temp_trend", 0)), 3),
-                "max_battery_temp": round(float(maintenance_features.get("max_battery_temp", 0)), 3),
                 "connectivity_gap": round(float(maintenance_features.get("connectivity_gap", 0)), 3),
                 "solar_load_ratio": round(float(maintenance_features.get("solar_load_ratio", 0)), 3),
                 "battery_age_months": round(float(maintenance_features.get("battery_age_months", 0)), 3),

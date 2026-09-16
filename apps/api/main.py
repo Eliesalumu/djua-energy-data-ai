@@ -153,21 +153,21 @@ class TelemetryRecord(BaseModel):
     )
     device_id: str = Field(..., description="Identifiant unique du boitier IoT.")
     kit_id: str = Field(..., description="Identifiant du kit solaire rattache au boitier.")
-    battery_voltage_v: float = Field(..., gt=0, description="Tension batterie en volts.")
+    battery_voltage_v: float = Field(..., description="Tension batterie en volts.")
     battery_current_a: float = Field(..., description="Courant batterie en amperes.")
     battery_power_w: float = Field(..., description="Puissance batterie en watts.")
-    state_of_charge_pct: float = Field(..., ge=0, le=100, description="Niveau de charge batterie en pourcentage.")
-    state_of_health_pct: float = Field(..., ge=0, le=100, description="Etat de sante batterie en pourcentage.")
+    state_of_charge_pct: float = Field(..., description="Niveau de charge batterie en pourcentage.")
+    state_of_health_pct: float = Field(..., description="Etat de sante batterie en pourcentage.")
 
     region: str | None = Field(None, description="Zone geographique ou profil regional.")
     season: Literal["dry", "rainy", "harmattan", "transition"] | None = Field(None, description="Saison locale.")
     day_period: Literal["day", "night"] | None = Field(None, description="Periode jour/nuit de la mesure.")
     ambient_temperature_c: float | None = Field(None, description="Temperature ambiante en degres Celsius.")
-    humidity_pct: float | None = Field(None, ge=0, le=100, description="Humidite relative en pourcentage.")
+    humidity_pct: float | None = Field(None, description="Humidite relative en pourcentage.")
     installation_type: str | None = Field(None, description="Type d'installation du kit.")
 
-    charge_duration_seconds: float | None = Field(None, ge=0, description="Duree de charge recente.")
-    discharge_duration_seconds: float | None = Field(None, ge=0, description="Duree de decharge recente.")
+    charge_duration_seconds: float | None = Field(None, description="Duree de charge recente.")
+    discharge_duration_seconds: float | None = Field(None, description="Duree de decharge recente.")
     solar_voltage_v: float | None = Field(None, description="Tension panneau/regulateur en volts.")
     solar_current_a: float | None = Field(None, description="Courant solaire en amperes.")
     solar_power_w: float | None = Field(None, description="Puissance solaire instantanee.")
@@ -188,7 +188,7 @@ class TelemetryRecord(BaseModel):
     connectivity_type: str | None = Field(None, description="Technologie reseau, ex: lte, gsm.")
     network_operator: str | None = Field(None, description="Operateur reseau.")
     device_temperature_c: float | None = Field(None, description="Temperature interne du boitier.")
-    missing_measurement_count: int | None = Field(None, ge=0, description="Nombre de mesures manquantes.")
+    missing_measurement_count: int | None = Field(None, description="Nombre de mesures manquantes.")
     abnormal_consumption_detected: bool | None = Field(None, description="Consommation anormale detectee.")
     battery_error_code: str | None = Field(None, description="Code erreur batterie, NONE si aucun.")
     device_error_code: str | None = Field(None, description="Code erreur general du device, NONE si aucun.")
@@ -646,7 +646,7 @@ def _source(kind: str, detail: str, model_name: str | None = None) -> dict:
 def _demo_windows() -> dict[str, list[dict]]:
     scenarios_by_kit = {
         "kit-0": "movement_then_connectivity_loss",
-        "kit-1": "battery_overheating",
+        "kit-1": "progressive_battery_degradation",
         "kit-2": "normal_operation",
     }
     records = SyntheticTelemetryGenerator(seed=31, num_kits=3).generate(
@@ -699,8 +699,6 @@ def _feature_snapshot(records: list[dict]) -> dict:
     selected = {
         "maintenance": {
             "battery_voltage_trend": round(float(maintenance_features.get("battery_voltage_trend", 0)), 3),
-            "battery_temp_trend": round(float(maintenance_features.get("battery_temp_trend", 0)), 3),
-            "max_battery_temp": round(float(maintenance_features.get("max_battery_temp", 0)), 3),
             "connectivity_gap": round(float(maintenance_features.get("connectivity_gap", 0)), 3),
             "solar_load_ratio": round(float(maintenance_features.get("solar_load_ratio", 0)), 3),
             "battery_age_months": round(float(maintenance_features.get("battery_age_months", 0)), 3),
@@ -783,22 +781,6 @@ def _risk_factors(records: list[dict], decision: dict) -> list[dict]:
             "severity": "high" if features["maintenance"]["connectivity_gap"] >= 300 else "low",
             "category": "connectivity",
             "source": _source("model_feature", "Feature presente dans le vecteur d'entree du modele.", "maintenance/security"),
-            "measured_at": latest["event_time"],
-        },
-        {
-            "name": "max_battery_temp",
-            "label": "Temperature batterie maximale",
-            "description": "Feature maintenance calculee sur la fenetre de telemetrie.",
-            "observed_value": features["maintenance"]["max_battery_temp"],
-            "expected_value": 40,
-            "delta": round(features["maintenance"]["max_battery_temp"] - 40, 3),
-            "unit": "celsius",
-            "contribution": None,
-            "importance_relative": "explanatory_feature",
-            "direction": "increases_risk",
-            "severity": "high" if features["maintenance"]["max_battery_temp"] >= 44 else "low",
-            "category": "battery",
-            "source": _source("model_feature", "Feature presente dans le vecteur d'entree du modele maintenance.", "maintenance"),
             "measured_at": latest["event_time"],
         },
         {
@@ -1247,24 +1229,6 @@ def solar_advisor_ask(
 
 
 @app.get(
-    "/solar-advisor",
-    summary="Interface Web dediee DJUA AI Solar Advisor",
-    description="Application Web moderne et interactive de conseil, dimensionnement et devis solaire intelligent.",
-)
-def solar_advisor_app() -> FileResponse:
-    return FileResponse("apps/api/static/solar_advisor.html")
-
-
-@app.get(
-    "/frontend/solar-advisor",
-    summary="Interface Web dediee DJUA AI Solar Advisor (alias frontend)",
-    description="Application Web moderne et interactive de conseil, dimensionnement et devis solaire intelligent.",
-)
-def solar_advisor_frontend_app() -> FileResponse:
-    return FileResponse("apps/api/static/solar_advisor.html")
-
-
-@app.get(
     "/realtime/fleet-state",
     summary="Lire l'etat temps reel de la flotte",
     description="Retourne l'etat courant des devices connus dans le stockage temps reel local.",
@@ -1340,7 +1304,6 @@ def _live_state_summary(state: dict) -> dict:
         "scenario": latest.get("scenario"),
         "battery": {
             "voltage_v": latest.get("battery_voltage_v"),
-            "temperature_c": latest.get("battery_temperature_c"),
             "state_of_charge_pct": latest.get("state_of_charge_pct"),
             "state_of_health_pct": latest.get("state_of_health_pct"),
             "age_months": latest.get("battery_age_months"),
@@ -1485,8 +1448,6 @@ def _kit_console_risk_factors(
     scores: dict[str, Any],
 ) -> list[str]:
     factors: list[str] = []
-    if float(latest.get("battery_temperature_c") or 0) >= 48:
-        factors.append(f"temperature batterie elevee ({latest.get('battery_temperature_c')} C)")
     if float(latest.get("battery_voltage_v") or 99) <= 12.1:
         factors.append(f"tension batterie faible ({latest.get('battery_voltage_v')} V)")
     if float(latest.get("state_of_health_pct") or 100) <= 75:
@@ -1969,7 +1930,7 @@ def frontend_kit_digital_twin(
         },
         "identity": {**kit, "firmware": {"version": "1.0.0", "status": "up_to_date"}, "uptime": {"value": 99.1, "unit": "percent"}},
         "health": {"score": kit["health_score"], "level": kit["risk_level"], "trend": "down" if kit["risk_level"] != "low" else "stable", "confidence": 0.81, "prediction_horizon": "7d", "recommendation": kit["model_outputs"]["maintenance"]["recommended_action"], "source": _source("model_derived", "Score sante = 100 - score de risque modele consolide.", "LocalInferenceEngine")},
-        "battery": {"voltage": {"value": latest["battery_voltage_v"], "unit": "V"}, "temperature": {"value": latest["battery_temperature_c"], "unit": "celsius"}, "soc": {"value": latest["state_of_charge_pct"], "unit": "percent"}, "soh": {"value": latest["state_of_health_pct"], "unit": "percent"}, "status": "watch" if kit["risk_level"] != "low" else "ok", "source": _source("telemetry", "Derniere telemetrie du kit.")},
+        "battery": {"voltage": {"value": latest["battery_voltage_v"], "unit": "V"}, "soc": {"value": latest["state_of_charge_pct"], "unit": "percent"}, "soh": {"value": latest["state_of_health_pct"], "unit": "percent"}, "status": "watch" if kit["risk_level"] != "low" else "ok", "source": _source("telemetry", "Derniere telemetrie du kit.")},
         "solar": {"power": {"value": latest["solar_power_w"], "unit": "W"}, "energy_today": {"value": round(float(latest["energy_generated_wh"]) / 1000, 3), "unit": "kWh"}, "yield": {"value": round(float(latest["solar_power_w"]) / max(float(latest["solar_irradiance_w_m2"]), 1) * 100, 2), "unit": "percent"}, "status": "ok", "source": _source("telemetry_derived", "Mesures et ratio calcules depuis la telemetrie.")},
         "load": {"power": {"value": latest["load_power_w"], "unit": "W"}, "profile": latest["usage_profile"], "abnormal_consumption": latest["abnormal_consumption_detected"], "status": "watch" if latest["abnormal_consumption_detected"] else "ok", "source": _source("telemetry", "Derniere telemetrie du kit.")},
         "connectivity": {"network": latest["connectivity_type"], "status": kit["connectivity_status"], "signal_strength_dbm": latest["signal_strength_dbm"], "last_communication_at": latest["last_successful_sync_at"], "packet_loss_ratio": latest["packet_loss_ratio"], "source": _source("telemetry", "Derniere telemetrie du kit.")},
@@ -1979,7 +1940,7 @@ def frontend_kit_digital_twin(
             {"name": "battery", "type": "storage", "status": "watch" if kit["model_outputs"]["maintenance"]["risk_level"] == "high" else "ok", "health_score": kit["health_score"], "current_value": latest["battery_voltage_v"], "unit": "V", "risk": kit["model_outputs"]["maintenance"]["risk_level"], "recommendation": kit["model_outputs"]["maintenance"]["recommended_action"], "source": _source("model_derived", "Risque batterie derive du modele maintenance.", "maintenance")},
             {"name": "iot_module", "type": "connectivity", "status": kit["connectivity_status"], "health_score": max(0, 100 - round(float(kit["model_outputs"]["security"]["suspicious_activity_score"]) * 100)), "current_value": latest["signal_strength_dbm"], "unit": "dBm", "risk": kit["model_outputs"]["security"]["risk_level"], "recommendation": kit["model_outputs"]["security"]["recommended_action"], "source": _source("model_derived", "Risque module IoT derive du modele securite.", "security")},
         ],
-        "telemetry": {"granularity": "30m", "series": [{"timestamp": record["event_time"], "battery_voltage_v": record["battery_voltage_v"], "solar_power_w": record["solar_power_w"], "battery_temperature_c": record["battery_temperature_c"], "state_of_charge_pct": record["state_of_charge_pct"]} for record in records], "source": _source("telemetry", "Fenetre exacte envoyee aux modeles.")},
+        "telemetry": {"granularity": "30m", "series": [{"timestamp": record["event_time"], "battery_voltage_v": record["battery_voltage_v"], "solar_power_w": record["solar_power_w"], "state_of_charge_pct": record["state_of_charge_pct"]} for record in records], "source": _source("telemetry", "Fenetre exacte envoyee aux modeles.")},
         "events": [{"event_id": "evt-kit-001", "type": "score_changed", "timestamp": DEMO_NOW, "severity": kit["risk_level"], "description": "Score de sante actualise depuis les sorties modele.", "source": _source("model_derived", "Evenement derive du score modele.", "LocalInferenceEngine")}],
         "maintenance_prediction": {"failure_probability": kit["model_outputs"]["maintenance"]["technical_risk_probability"], "horizon": "7d", "component": kit["model_outputs"]["maintenance"]["suspected_component"], "confidence": 0.79, "priority": kit["risk_level"], "suggested_action": kit["model_outputs"]["maintenance"]["recommended_action"], "raw_model_output": kit["model_outputs"]["maintenance"], "source": _source("model_output", "Sortie directe infer_maintenance.", "maintenance")},
     }

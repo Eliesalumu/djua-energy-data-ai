@@ -19,7 +19,6 @@ def test_validation_accepts_valid_telemetry() -> None:
         "battery_voltage_v": 13.4,
         "battery_current_a": 2.0,
         "battery_power_w": 26.8,
-        "battery_temperature_c": 31.0,
         "state_of_charge_pct": 90.0,
         "state_of_health_pct": 100.0,
     }
@@ -45,7 +44,6 @@ def test_validation_accepts_backend_critical_telemetry_fields() -> None:
         "impact_detected": True,
         "identity_mismatch_detected": True,
         "short_circuit_detected": False,
-        "battery_temperature_c": 46.1,
         "reset_count": 3,
         "sensor_failure_detected": False,
         "device_error_code": "NONE",
@@ -115,7 +113,7 @@ def test_generate_mvp_dataset_returns_structured_rows() -> None:
     assert set(dataset["scenario"].unique()).issuperset({
         "normal_operation",
         "battery_degradation",
-        "overheating",
+        "voltage_instability",
         "movement_and_tampering",
         "connectivity_loss",
         "low_solar_input",
@@ -162,7 +160,6 @@ def test_telemetry_ingestion_service_processes_valid_window() -> None:
         "battery_voltage_v": 13.4,
         "battery_current_a": 2.0,
         "battery_power_w": 26.8,
-        "battery_temperature_c": 31.0,
         "state_of_charge_pct": 90.0,
         "state_of_health_pct": 100.0,
     }

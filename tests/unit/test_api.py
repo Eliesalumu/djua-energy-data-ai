@@ -190,7 +190,6 @@ def test_telemetry_schema_matches_current_required_contract() -> None:
         "battery_voltage_v",
         "battery_current_a",
         "battery_power_w",
-        "battery_temperature_c",
         "state_of_charge_pct",
         "state_of_health_pct",
     ]:
@@ -230,7 +229,7 @@ def test_device_evaluate_from_telemetry_builds_kit_intelligence(tmp_path, monkey
     store = RealtimeTelemetryStore(tmp_path / "device.sqlite")
     monkeypatch.setattr(api_main, "realtime_store", store)
     records = SyntheticTelemetryGenerator(seed=303, num_kits=1).generate(
-        scenarios=["overheating"],
+        scenarios=["progressive_battery_degradation"],
         duration_hours=1,
     )[:4]
     records = [
@@ -283,7 +282,6 @@ def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
             "kit_id": "kit-jury-001",
             "records": [
                 {
-                    "battery_temperature_c": 55,
                     "battery_voltage_v": 11.7,
                     "state_of_health_pct": 62,
                     "connectivity_gap_seconds": 420,
@@ -323,7 +321,7 @@ def test_demo_kit_console_page_and_context_chat(monkeypatch) -> None:
     assert body["used_llm"] is False
     assert "local_fallback" in body["sources"]
     assert "kit-jury-001" in body["answer"]
-    assert "temperature batterie" in body["answer"]
+    assert "tension batterie faible" in body["answer"]
 
 
 def test_demo_kit_console_chat_uses_llm_for_technical_questions_when_available(monkeypatch) -> None:
@@ -346,7 +344,7 @@ def test_demo_kit_console_chat_uses_llm_for_technical_questions_when_available(m
             context={
                 "payload": {
                     "identity": {"kit_id": "kit-jury-001"},
-                    "records": [{"battery_temperature_c": 55}],
+                    "records": [{"battery_voltage_v": 11.7}],
                 },
                 "prediction": {
                     "scores": {"operational_risk": 82},
@@ -382,7 +380,6 @@ def test_demo_kit_console_chat_falls_back_when_llm_crashes(monkeypatch) -> None:
                     "kit_id": "kit-jury-001",
                     "records": [
                         {
-                            "battery_temperature_c": 55,
                             "battery_voltage_v": 11.7,
                             "state_of_health_pct": 62,
                             "abnormal_consumption_detected": True,

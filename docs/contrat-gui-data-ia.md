@@ -44,7 +44,6 @@ Body :
       "battery_voltage_v": 13.18,
       "battery_current_a": 3.24,
       "battery_power_w": 42.7,
-      "battery_temperature_c": 33.04,
       "state_of_charge_pct": 87.8,
       "state_of_health_pct": 97.7
     }
@@ -63,7 +62,6 @@ kit_id
 battery_voltage_v
 battery_current_a
 battery_power_w
-battery_temperature_c
 state_of_charge_pct
 state_of_health_pct
 ```
@@ -214,8 +212,6 @@ Features maintenance :
 battery_voltage_trend
 battery_voltage_volatility
 soc_drop
-battery_temp_trend
-max_battery_temp
 charge_duration_seconds
 discharge_duration_seconds
 solar_load_ratio

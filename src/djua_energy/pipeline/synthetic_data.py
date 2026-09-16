@@ -104,7 +104,7 @@ class SyntheticTelemetryGenerator:
         scenarios = scenarios or [
             "normal_operation",
             "progressive_battery_degradation",
-            "battery_overheating",
+            "low_solar_input",
             "suspicious_movement",
             "tamper_attempt",
         ]
@@ -136,8 +136,6 @@ class SyntheticTelemetryGenerator:
         if scenario == "progressive_battery_degradation":
             soc = max(20, 95 - step * 1.5 - context["battery_age_months"] * 0.08)
             battery_voltage -= 0.03 * step
-        elif scenario == "battery_overheating":
-            temperature += 12 + (step % 3) * 0.8
         elif scenario == "rapid_discharge":
             soc = max(15, soc - step * 1.8)
             load_power *= 1.35
@@ -191,7 +189,6 @@ class SyntheticTelemetryGenerator:
             "battery_voltage_v": round(battery_voltage, 2),
             "battery_current_a": round(3.0 + (step % 4) * 0.1, 2),
             "battery_power_w": round(battery_voltage * (3.0 + (step % 4) * 0.1), 2),
-            "battery_temperature_c": round(temperature, 2),
             "state_of_charge_pct": round(max(10, soc), 2),
             "state_of_health_pct": round(max(55, 100 - step * 0.08 - context["battery_age_months"] * 0.35), 2),
             "battery_cycle_count": 120 + step + context["battery_age_months"] * 8,
@@ -200,7 +197,7 @@ class SyntheticTelemetryGenerator:
             "charging_status": "charging" if step % 2 == 0 else "idle",
             "charge_duration_seconds": 6000 if step % 2 == 0 else 0,
             "discharge_duration_seconds": 0 if step % 2 == 0 else 1800,
-            "battery_error_code": "NONE" if step % 10 else "BATT_TEMP_HIGH",
+            "battery_error_code": "LOW_VOLTAGE" if battery_voltage <= 12.1 else "NONE",
             "battery_controller_status": "ok",
             "solar_voltage_v": 22.0,
             "solar_current_a": round(max(0.1, solar_power / 22.0), 2),
@@ -343,15 +340,10 @@ def dataset_row_to_telemetry_record(row: dict[str, Any] | pd.Series) -> dict[str
     enclosure_opened = int(row_data.get("enclosure_opened", 0))
     connectivity_gap = int(row_data.get("connectivity_gap_seconds", 0))
     battery_voltage = float(row_data.get("battery_voltage_v", 13.2))
-    battery_temperature = float(row_data.get("battery_temperature_c", 31.5))
     state_of_charge = float(row_data.get("state_of_charge_pct", 88.0))
     battery_age = int(row_data.get("battery_age_months", 12))
 
-    if scenario == "overheating":
-        battery_error_code = "BATT_TEMP_HIGH"
-        charge_duration_seconds = 3600
-        discharge_duration_seconds = 600
-    elif scenario == "connectivity_loss":
+    if scenario == "connectivity_loss":
         battery_error_code = "NONE"
         charge_duration_seconds = 0
         discharge_duration_seconds = 1800
@@ -398,7 +390,6 @@ def dataset_row_to_telemetry_record(row: dict[str, Any] | pd.Series) -> dict[str
         "battery_voltage_v": round(battery_voltage, 2),
         "battery_current_a": 2.5,
         "battery_power_w": round(battery_voltage * 2.5, 2),
-        "battery_temperature_c": round(battery_temperature, 2),
         "state_of_charge_pct": round(state_of_charge, 2),
         "state_of_health_pct": round(max(55.0, 98.0 - battery_age * 0.45), 2),
         "battery_error_code": battery_error_code,
@@ -421,7 +412,7 @@ def dataset_row_to_telemetry_record(row: dict[str, Any] | pd.Series) -> dict[str
         "speed_mps": 0.4 if movement_detected else 0.0,
         "connectivity_gap_seconds": connectivity_gap,
         "connection_status": "disconnected" if connectivity_gap > 250 else ("degraded" if connectivity_gap > 50 else "connected"),
-        "device_temperature_c": round(battery_temperature + 1.2, 2),
+        "device_temperature_c": round(float(row_data.get("ambient_temperature_c", 28.0)) + 3.5, 2),
         "identity_mismatch_detected": bool(identity_mismatch),
         "network_operator": "synthetic-op",
         "reset_count": reset_count,
@@ -440,12 +431,12 @@ def generate_mvp_dataset(
     target_rows: int | None = 10000,
 ) -> pd.DataFrame:
     scenario_profiles = [
-        {"scenario": "normal_operation", "battery_voltage_v": 13.2, "battery_temperature_c": 31.5, "state_of_charge_pct": 88.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 120.0, "label_maintenance": 0, "label_security": 0},
-        {"scenario": "battery_degradation", "battery_voltage_v": 11.8, "battery_temperature_c": 34.0, "state_of_charge_pct": 62.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 108.0, "label_maintenance": 1, "label_security": 0},
-        {"scenario": "overheating", "battery_voltage_v": 12.5, "battery_temperature_c": 47.0, "state_of_charge_pct": 78.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 95.0, "label_maintenance": 1, "label_security": 0},
-        {"scenario": "movement_and_tampering", "battery_voltage_v": 13.0, "battery_temperature_c": 33.0, "state_of_charge_pct": 84.0, "movement_detected": 1, "tamper_detected": 1, "enclosure_opened": 1, "connectivity_gap_seconds": 45, "solar_power_w": 110.0, "label_maintenance": 0, "label_security": 1},
-        {"scenario": "connectivity_loss", "battery_voltage_v": 12.9, "battery_temperature_c": 32.5, "state_of_charge_pct": 79.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 320, "solar_power_w": 70.0, "label_maintenance": 1, "label_security": 1},
-        {"scenario": "low_solar_input", "battery_voltage_v": 12.2, "battery_temperature_c": 32.0, "state_of_charge_pct": 74.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 40.0, "label_maintenance": 1, "label_security": 0},
+        {"scenario": "normal_operation", "battery_voltage_v": 13.2, "state_of_charge_pct": 88.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 120.0, "label_maintenance": 0, "label_security": 0},
+        {"scenario": "battery_degradation", "battery_voltage_v": 11.8, "state_of_charge_pct": 62.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 108.0, "label_maintenance": 1, "label_security": 0},
+        {"scenario": "voltage_instability", "battery_voltage_v": 12.0, "state_of_charge_pct": 58.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 95.0, "label_maintenance": 1, "label_security": 0},
+        {"scenario": "movement_and_tampering", "battery_voltage_v": 13.0, "state_of_charge_pct": 84.0, "movement_detected": 1, "tamper_detected": 1, "enclosure_opened": 1, "connectivity_gap_seconds": 45, "solar_power_w": 110.0, "label_maintenance": 0, "label_security": 1},
+        {"scenario": "connectivity_loss", "battery_voltage_v": 12.9, "state_of_charge_pct": 79.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 320, "solar_power_w": 70.0, "label_maintenance": 1, "label_security": 1},
+        {"scenario": "low_solar_input", "battery_voltage_v": 12.2, "state_of_charge_pct": 74.0, "movement_detected": 0, "tamper_detected": 0, "enclosure_opened": 0, "connectivity_gap_seconds": 0, "solar_power_w": 40.0, "label_maintenance": 1, "label_security": 0},
     ]
     rng = Random(20260717)
     rows: list[dict[str, Any]] = []
@@ -458,7 +449,6 @@ def generate_mvp_dataset(
                 context = _context_for(device_idx, sample_idx, profile["scenario"], rng)
                 usage = USAGE_PROFILES[context["usage_profile"]]
                 age_voltage_penalty = battery_age_months * 0.006
-                ambient_temp_penalty = max(0.0, context["ambient_temperature_c"] - 35.0) * 0.04
                 load_power = round((55.0 + (sample_idx % 6) * 2.5) * usage["load_factor"], 2)
                 solar_power = round(profile["solar_power_w"] * (context["solar_irradiance_w_m2"] / 750.0) + sample_idx * 0.6 - device_idx * 0.15, 2)
                 if profile["scenario"] == "low_solar_input":
@@ -470,7 +460,6 @@ def generate_mvp_dataset(
                     "scenario": profile["scenario"],
                     **context,
                     "battery_voltage_v": round(profile["battery_voltage_v"] + (sample_idx % 5) * 0.05 + device_idx * 0.005 - age_voltage_penalty, 2),
-                    "battery_temperature_c": round(profile["battery_temperature_c"] + sample_idx * 0.08 + ambient_temp_penalty, 2),
                     "state_of_charge_pct": round(max(15, profile["state_of_charge_pct"] - usage["soc_penalty"] * sample_idx - battery_age_months * 0.08), 2),
                     "movement_detected": profile["movement_detected"],
                     "tamper_detected": profile["tamper_detected"],

@@ -21,7 +21,7 @@ DATASET_PATH = Path("data/generated/mvp_dataset.csv")
 SCENARIO_TITLES = {
     "normal_operation": "Fonctionnement normal",
     "battery_degradation": "Degradation batterie",
-    "overheating": "Surchauffe batterie",
+    "voltage_instability": "Instabilite tension batterie",
     "movement_and_tampering": "Mouvement et tentative de sabotage",
     "connectivity_loss": "Perte de connectivite",
     "low_solar_input": "Faible production solaire",
@@ -30,7 +30,7 @@ SCENARIO_TITLES = {
 SCENARIO_MESSAGES = {
     "normal_operation": "Le dispositif fonctionne dans une zone normale.",
     "battery_degradation": "La batterie montre des signes de faiblesse ou de baisse progressive.",
-    "overheating": "La temperature batterie est elevee et demande une inspection.",
+    "voltage_instability": "La tension batterie devient instable et demande une inspection.",
     "movement_and_tampering": "Des signaux physiques indiquent un risque de manipulation non autorisee.",
     "connectivity_loss": "La communication est instable ou interrompue, avec risque operationnel.",
     "low_solar_input": "La production solaire est faible et peut impacter la recharge.",
@@ -109,7 +109,6 @@ def _prediction_summary(predictions: list[dict[str, Any]], score_key: str) -> di
 def _scenario_assessment(scenario_rows: pd.DataFrame) -> dict[str, Any]:
     scenario = str(scenario_rows["scenario"].iloc[0]) if "scenario" in scenario_rows else ""
     min_voltage = float(scenario_rows["battery_voltage_v"].min())
-    max_temp = float(scenario_rows["battery_temperature_c"].max())
     min_soc = float(scenario_rows["state_of_charge_pct"].min())
     day_rows = scenario_rows[scenario_rows.get("day_period", "day") == "day"] if "day_period" in scenario_rows else scenario_rows
     solar_reference_rows = day_rows if not day_rows.empty else scenario_rows
@@ -137,9 +136,6 @@ def _scenario_assessment(scenario_rows: pd.DataFrame) -> dict[str, Any]:
 
     maintenance_reasons: list[str] = []
     maintenance_score = 0.0
-    if max_temp >= 45:
-        maintenance_score = max(maintenance_score, 0.9)
-        maintenance_reasons.append(f"temperature batterie elevee ({_fmt_number(max_temp, 1)} C)")
     if min_voltage <= 12.3:
         maintenance_score = max(maintenance_score, 0.8)
         maintenance_reasons.append(f"tension batterie faible ({_fmt_number(min_voltage, 2)} V)")
@@ -243,7 +239,6 @@ def _display_scenario_result(
         print(f"Humidite              : {_fmt_number(float(sample['humidity_pct']), 1)} %")
         print(f"Ensoleillement        : {_fmt_number(float(sample['solar_irradiance_w_m2']), 0)} W/m2")
     print(f"Battery voltage       : {_fmt_number(float(sample['battery_voltage_v']), 2)} V")
-    print(f"Battery temperature   : {_fmt_number(float(sample['battery_temperature_c']), 1)} C")
     print(f"State of charge       : {_fmt_number(float(sample['state_of_charge_pct']), 1)} %")
     print(f"Solar power           : {_fmt_number(float(sample['solar_power_w']), 1)} W")
     print(f"Movement detected     : {_yes_no(sample['movement_detected'])}")
@@ -257,11 +252,6 @@ def _display_scenario_result(
         "Battery voltage       : "
         f"{_fmt_number(float(scenario_rows['battery_voltage_v'].min()), 2)} -> "
         f"{_fmt_number(float(scenario_rows['battery_voltage_v'].max()), 2)} V"
-    )
-    print(
-        "Battery temperature   : "
-        f"{_fmt_number(float(scenario_rows['battery_temperature_c'].min()), 1)} -> "
-        f"{_fmt_number(float(scenario_rows['battery_temperature_c'].max()), 1)} C"
     )
     print(
         "State of charge       : "
@@ -360,7 +350,6 @@ def _device_indicators(device_rows: pd.DataFrame) -> dict[str, Any]:
         "measure_count": len(device_rows),
         "scenario_count": int(device_rows["scenario"].nunique()) if "scenario" in device_rows else 0,
         "min_voltage": _safe_min(device_rows, "battery_voltage_v"),
-        "max_temperature": _safe_max(device_rows, "battery_temperature_c"),
         "min_soc": _safe_min(device_rows, "state_of_charge_pct"),
         "min_solar_power": _safe_min(solar_rows, "solar_power_w"),
         "max_connectivity_gap": int(_safe_max(device_rows, "connectivity_gap_seconds")),
@@ -378,7 +367,7 @@ def _global_alert_level(summaries: list[dict[str, Any]], indicators: dict[str, A
     level = max(levels, key=_criticality_rank) if levels else "NORMAL"
     if indicators["enclosure_opened"] or indicators["tamper_detected"]:
         return "CRITICAL"
-    if indicators["max_temperature"] >= 48 and indicators["min_voltage"] <= 12.3:
+    if indicators["min_voltage"] <= 12.0 and indicators["min_soc"] <= 45:
         return "CRITICAL"
     return level
 
@@ -388,8 +377,6 @@ def _global_reliability_score(summaries: list[dict[str, Any]], indicators: dict[
     if indicators["enclosure_opened"]:
         score -= 25
     if indicators["tamper_detected"] or indicators["movement_detected"]:
-        score -= 18
-    if indicators["max_temperature"] >= 45:
         score -= 18
     if indicators["min_voltage"] <= 12.3:
         score -= 14
@@ -401,7 +388,7 @@ def _global_reliability_score(summaries: list[dict[str, Any]], indicators: dict[
         score -= 8
     high_scenarios = sum(1 for item in summaries if item["alert_level"] in {"HIGH", "CRITICAL"})
     score -= max(0, high_scenarios - 2) * 3
-    if score <= 0 and (indicators["enclosure_opened"] or indicators["max_temperature"] >= 45):
+    if score <= 0 and indicators["enclosure_opened"]:
         return 18.0
     return max(0.0, min(100.0, score))
 
@@ -437,20 +424,6 @@ def _issue_sentences(indicators: dict[str, Any]) -> list[dict[str, str]]:
             "action": (
                 "Il faut verifier la position du kit, controler le verrouillage, regarder les traces "
                 "de manipulation et comparer l'evenement avec l'historique client ou technicien."
-            ),
-        })
-    if indicators["max_temperature"] >= 45:
-        issues.append({
-            "title": "Surchauffe batterie",
-            "sentence": (
-                f"L'IA a detecte une surchauffe batterie avec un maximum de "
-                f"{_fmt_number(indicators['max_temperature'], 1)} C. "
-                "Ce niveau de temperature peut accelerer la degradation de la batterie et augmenter "
-                "le risque de panne si le device reste en service sans controle."
-            ),
-            "action": (
-                "Il faut inspecter la batterie, verifier la ventilation, controler le regulateur de charge "
-                "et eviter une charge prolongee tant que la temperature n'est pas revenue dans une zone normale."
             ),
         })
     if indicators["min_voltage"] <= 12.3 or indicators["min_soc"] <= 60:
@@ -586,9 +559,8 @@ def _display_global_diagnosis(
         f"Ce device {device_id} est dans un etat {_alert_label_fr(level)}. "
         f"L'IA a analyse {indicators['measure_count']} mesures et detecte les cas suivants : {problems}. "
         f"La perte de connectivite atteint jusqu'a {indicators['max_connectivity_gap']} secondes. "
-        f"La batterie, agee de {int(sample.get('battery_age_months', 0))} mois, presente une surchauffe "
-        f"jusqu'a {_fmt_number(indicators['max_temperature'], 1)} C, une tension qui descend jusqu'a "
-        f"{_fmt_number(indicators['min_voltage'], 2)} V et un niveau de charge minimum de "
+        f"La batterie, agee de {int(sample.get('battery_age_months', 0))} mois, descend jusqu'a "
+        f"{_fmt_number(indicators['min_voltage'], 2)} V avec un niveau de charge minimum de "
         f"{_fmt_number(indicators['min_soc'], 1)} %. "
         f"La production solaire descend jusqu'a {_fmt_number(indicators['min_solar_power'], 1)} W, "
         f"ce qui peut aggraver la degradation batterie et l'autonomie du device."
@@ -598,7 +570,7 @@ def _display_global_diagnosis(
     actions = [
         "ouvrir une intervention prioritaire",
         "verifier physiquement le boitier et confirmer si l'ouverture etait autorisee",
-        "controler la batterie, la ventilation et le regulateur de charge",
+        "controler la batterie, les connectiques et le regulateur de charge",
         "verifier le panneau solaire, le cablage et la qualite de recharge",
         "retablir la connectivite en controlant le signal reseau, la SIM et l'antenne",
     ]

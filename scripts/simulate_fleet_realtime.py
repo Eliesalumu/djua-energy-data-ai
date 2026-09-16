@@ -123,7 +123,7 @@ USAGE_PROFILES = {
 SCENARIO_DESCRIPTIONS = {
     "normal": "Stable device with normal battery, solar input and security signals.",
     "battery_degradation": "Battery health and charge decrease faster than expected.",
-    "overheating": "Battery and internal temperatures rise under hot climate/load.",
+    "voltage_instability": "Battery voltage becomes unstable under load.",
     "low_solar_input": "Solar production stays weak; battery slowly loses autonomy.",
     "security_movement": "Device moves away from its authorized location.",
     "connectivity_loss": "Network quality degrades and telemetry gaps increase.",
@@ -134,7 +134,7 @@ RISK_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "n/a": 
 SCENARIO_TITLES = {
     "normal": "Fonctionnement normal",
     "battery_degradation": "Degradation batterie",
-    "overheating": "Surchauffe batterie",
+    "voltage_instability": "Instabilite tension batterie",
     "low_solar_input": "Production solaire faible",
     "security_movement": "Deplacement suspect",
     "connectivity_loss": "Perte de connectivite",
@@ -143,7 +143,7 @@ SCENARIO_TITLES = {
 SCENARIO_ACTIONS = {
     "normal": "Continuer la supervision standard.",
     "battery_degradation": "Planifier un controle batterie et verifier l'autonomie reelle.",
-    "overheating": "Inspecter batterie, ventilation, regulateur et exposition au soleil.",
+    "voltage_instability": "Controler la tension batterie, les connectiques et le regulateur.",
     "low_solar_input": "Verifier panneau solaire, orientation, ombrage et connectique.",
     "security_movement": "Verifier physiquement le kit et confirmer la position GPS.",
     "connectivity_loss": "Controler reseau/SIM/antenne et recuperer les messages en attente.",
@@ -378,7 +378,7 @@ def update_power_state(
         solar_power *= 0.34
     if device.scenario == "battery_degradation":
         load_power *= 1.08
-    if device.scenario == "overheating":
+    if device.scenario == "voltage_instability":
         load_power *= 1.18
 
     generated_wh = max(0.0, solar_power * hours * 0.88)
@@ -402,10 +402,7 @@ def update_power_state(
     battery_voltage = 11.65 + (device.state_of_charge_pct / 100) * 1.75 - age_months * 0.004
     if device.scenario == "battery_degradation":
         battery_voltage -= min(0.45, tick * 0.018)
-    battery_temperature = climate["ambient_temperature_c"] + 2.0 + load_power * 0.025
-    if device.scenario == "overheating":
-        battery_temperature += 7.0 + min(5.5, tick * 0.35)
-    device_temperature = battery_temperature + 1.4
+    device_temperature = climate["ambient_temperature_c"] + 3.4 + load_power * 0.02
     battery_current = max(0.2, load_power / max(11.5, battery_voltage))
 
     return {
@@ -413,7 +410,6 @@ def update_power_state(
         "battery_voltage_v": round(clamp(battery_voltage, 10.8, 13.8), 2),
         "battery_current_a": round(battery_current, 2),
         "battery_power_w": round(clamp(battery_voltage, 10.8, 13.8) * battery_current, 2),
-        "battery_temperature_c": round(clamp(battery_temperature, 15.0, 62.0), 2),
         "state_of_charge_pct": round(device.state_of_charge_pct, 2),
         "state_of_health_pct": round(device.state_of_health_pct, 2),
         "battery_cycle_count": round(120 + age_months * 8 + tick * 0.03, 2),
@@ -422,8 +418,8 @@ def update_power_state(
         "charging_status": "charging" if net_wh > 0 else "discharging",
         "charge_duration_seconds": interval_seconds if net_wh > 0 else 0,
         "discharge_duration_seconds": 0 if net_wh > 0 else interval_seconds,
-        "battery_error_code": "BATT_TEMP_HIGH" if battery_temperature >= 45 else "NONE",
-        "battery_controller_status": "warning" if battery_temperature >= 45 else "ok",
+        "battery_error_code": "LOW_VOLTAGE" if battery_voltage <= 12.1 else "NONE",
+        "battery_controller_status": "warning" if battery_voltage <= 12.1 else "ok",
         "solar_voltage_v": 22.0,
         "solar_current_a": round(max(0.0, solar_power / 22.0), 2),
         "solar_power_w": round(max(0.0, solar_power), 2),
@@ -559,7 +555,7 @@ def print_dry_run(records: list[dict[str, Any]], devices: int) -> None:
             f"{record['device_id']} seq={record['sequence_number']:02d} "
             f"scenario={record['scenario']} soc={record['state_of_charge_pct']}% "
             f"soh={record['state_of_health_pct']}% age={record['battery_age_months']}m "
-            f"temp_batt={record['battery_temperature_c']}C ambient={record['ambient_temperature_c']}C "
+            f"device_temp={record['device_temperature_c']}C ambient={record['ambient_temperature_c']}C "
             f"solar={record['solar_power_w']}W load={record['load_power_w']}W "
             f"gps=({record['latitude']},{record['longitude']}) geofence={record['geofence_status']}"
         )
@@ -601,11 +597,7 @@ def evidence_for(record: dict[str, Any], previous: dict[str, Any] | None) -> lis
     scenario = str(record.get("scenario", ""))
     if scenario == "normal":
         evidence.append(
-            f"Batterie stable: SOC {record['state_of_charge_pct']}%, temperature {record['battery_temperature_c']}C."
-        )
-    if record["battery_temperature_c"] >= 45:
-        evidence.append(
-            f"Surchauffe: batterie {record['battery_temperature_c']}C pour ambiance {record['ambient_temperature_c']}C."
+            f"Batterie stable: SOC {record['state_of_charge_pct']}%, tension {record['battery_voltage_v']}V."
         )
     if scenario == "battery_degradation":
         evidence.append(
@@ -639,8 +631,6 @@ def operational_status(record: dict[str, Any], risk_level: str) -> str:
         return "Communication perdue"
     if record["geofence_status"] == "outside" or record["tamper_detected"] or record["enclosure_opened"]:
         return "Risque securite terrain"
-    if record["battery_temperature_c"] >= 45:
-        return "Risque thermique batterie"
     if str(risk_level).lower() in {"critical", "high"}:
         return "Intervention prioritaire"
     if str(risk_level).lower() == "medium":
@@ -667,8 +657,6 @@ def should_show_device(
     if RISK_RANK.get(str(risk_level).lower(), 0) >= RISK_RANK["medium"]:
         return True
     if record["geofence_status"] == "outside" or record["connection_status"] == "disconnected":
-        return True
-    if record["battery_temperature_c"] >= 45:
         return True
     if previous and previous.get("geofence") != record["geofence_status"]:
         return True
@@ -700,7 +688,7 @@ def print_device_decision(
     print(
         "  Mesures clefs: "
         f"SOC {record['state_of_charge_pct']}%, SOH {record['state_of_health_pct']}%, "
-        f"batt {record['battery_temperature_c']}C, ambiant {record['ambient_temperature_c']}C, "
+        f"tension {record['battery_voltage_v']}V, ambiant {record['ambient_temperature_c']}C, "
         f"solaire {record['solar_power_w']}W, charge {record['load_power_w']}W"
     )
     print(
@@ -718,7 +706,7 @@ def device_state_snapshot(record: dict[str, Any], risk_level: str, risk_score: A
         "scenario": record["scenario"],
         "soc": float(record["state_of_charge_pct"]),
         "soh": float(record["state_of_health_pct"]),
-        "battery_temp": float(record["battery_temperature_c"]),
+        "battery_voltage": float(record["battery_voltage_v"]),
         "ambient": float(record["ambient_temperature_c"]),
         "solar": float(record["solar_power_w"]),
         "load": float(record["load_power_w"]),
@@ -752,7 +740,7 @@ def print_final_summary(by_device: dict[str, dict[str, Any]], processed: int, ap
         print(f"  Score IA     : risque {risk_label_fr(state['risk_level'])}, score {state['risk_score']}/100")
         print(
             f"  Situation    : SOC {state['soc']}%, SOH {state['soh']}%, "
-            f"temp {state['battery_temp']}C, reseau {state['connection']}, geofence {state['geofence']}"
+            f"tension {state['battery_voltage']}V, reseau {state['connection']}, geofence {state['geofence']}"
         )
         print(f"  Decision     : {state['action']}")
     print("")

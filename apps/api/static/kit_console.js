@@ -20,7 +20,6 @@ const presets = {
     battery_voltage_v: 13.28,
     battery_current_a: 3.2,
     battery_power_w: 42.5,
-    battery_temperature_c: 34.5,
     state_of_charge_pct: 88,
     state_of_health_pct: 97,
     battery_error_code: "NONE",
@@ -45,10 +44,9 @@ const presets = {
     battery_voltage_v: 11.55,
     battery_current_a: -5.6,
     battery_power_w: -64.7,
-    battery_temperature_c: 55.8,
     state_of_charge_pct: 23,
     state_of_health_pct: 61,
-    battery_error_code: "BATT_TEMP_HIGH",
+    battery_error_code: "BATT_WEAK",
     solar_power_w: 22,
     load_power_w: 112,
     charge_duration_seconds: 900,
@@ -70,7 +68,6 @@ const presets = {
     battery_voltage_v: 12.65,
     battery_current_a: 1.4,
     battery_power_w: 17.7,
-    battery_temperature_c: 38.2,
     state_of_charge_pct: 67,
     state_of_health_pct: 86,
     battery_error_code: "NONE",
@@ -150,7 +147,6 @@ function buildRecord(offset = 0) {
     battery_voltage_v: numberValue("battery_voltage_v"),
     battery_current_a: numberValue("battery_current_a"),
     battery_power_w: numberValue("battery_power_w"),
-    battery_temperature_c: numberValue("battery_temperature_c"),
     state_of_charge_pct: numberValue("state_of_charge_pct"),
     state_of_health_pct: numberValue("state_of_health_pct"),
     battery_error_code: textValue("battery_error_code") || "NONE",
@@ -294,7 +290,6 @@ function explainFromPayload(payload, response) {
   const securityItems = [];
   const decisionItems = [];
 
-  if (record.battery_temperature_c >= 48) maintenanceItems.push(`La batterie chauffe beaucoup: ${record.battery_temperature_c} C.`);
   if (record.battery_voltage_v <= 12.1) maintenanceItems.push(`La tension batterie est basse: ${record.battery_voltage_v} V.`);
   if (record.state_of_charge_pct <= 30) maintenanceItems.push(`La charge restante est faible: ${record.state_of_charge_pct}%.`);
   if (record.state_of_health_pct <= 75) maintenanceItems.push(`La sante batterie est degradee: ${record.state_of_health_pct}%.`);
@@ -322,7 +317,7 @@ function explainFromPayload(payload, response) {
 
 function maintenanceSentence(score, record, maintenance) {
   if (score === null) return "Maintenance non calculee";
-  if (record.battery_temperature_c >= 48 || record.battery_voltage_v <= 12.1 || record.state_of_health_pct <= 75) {
+  if (record.battery_voltage_v <= 12.1 || record.state_of_charge_pct <= 30 || record.state_of_health_pct <= 75) {
     return "Risque batterie important";
   }
   if (score >= 60) return "Risque technique eleve";
@@ -419,7 +414,7 @@ function addMessage(role, text) {
 
 function detectChatDomain(message) {
   const text = message.toLowerCase();
-  if (/(maintenance|panne|batterie|temperature|tension|sante|charge|solaire)/.test(text)) return "maintenance";
+  if (/(maintenance|panne|batterie|tension|sante|charge|solaire)/.test(text)) return "maintenance";
   if (/(securite|security|boitier|geofence|sabotage|fraude|mouvement|vol)/.test(text)) return "security";
   return "kit_diagnostic";
 }

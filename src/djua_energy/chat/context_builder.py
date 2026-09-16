@@ -17,7 +17,7 @@ DATASET_PATH = Path("data/generated/mvp_dataset.csv")
 SCENARIO_LABELS = {
     "normal_operation": "fonctionnement normal",
     "battery_degradation": "degradation batterie",
-    "overheating": "surchauffe batterie",
+    "voltage_instability": "instabilite tension batterie",
     "movement_and_tampering": "mouvement et tentative de sabotage",
     "connectivity_loss": "perte de connectivite",
     "low_solar_input": "faible production solaire",

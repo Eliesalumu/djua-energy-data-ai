@@ -78,7 +78,7 @@ Exemple :
 ```text
 11h00 -> mesure normale
 11h05 -> mesure normale
-11h10 -> temperature batterie un peu plus haute
+11h10 -> tension batterie un peu plus instable
 11h15 -> voltage en baisse
 11h20 -> connexion degradee
 ```

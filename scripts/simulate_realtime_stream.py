@@ -32,7 +32,7 @@ def _scenario_for_cycle(cycle: int, cycles: int) -> str:
         return "normal_operation"
     if cycle < max(2, (cycles * 2) // 3):
         return "progressive_battery_degradation"
-    return "battery_overheating"
+    return "low_solar_input"
 
 
 def _record_for_cycle(cycle: int, cycles: int, interval_seconds: int, seed: int, run_id: str) -> dict:
@@ -92,7 +92,6 @@ def main() -> None:
             print(
                 f"[{cycle + 1:02d}/{args.cycles}] "
                 f"{record['device_id']} "
-                f"temp_batt={record['battery_temperature_c']}C "
                 f"voltage={record['battery_voltage_v']}V "
                 f"charge={record['state_of_charge_pct']}% "
                 f"connexion={record.get('connection_status')} "

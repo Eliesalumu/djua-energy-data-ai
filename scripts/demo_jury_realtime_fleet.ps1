@@ -22,7 +22,7 @@ Write-Host ""
 
 if (-not (Test-Path $PythonPath)) {
     Write-Host "Virtual Python not found: $PythonPath" -ForegroundColor Red
-    Write-Host "Run first: .\scripts\create_venv.ps1"
+    Write-Host "Run first: python -m pip install -r requirements.txt"
     exit 1
 }
 

@@ -22,7 +22,7 @@ Write-Host ""
 
 if (-not (Test-Path $PythonPath)) {
     Write-Host "Python virtuel introuvable : $PythonPath" -ForegroundColor Red
-    Write-Host "Lance d'abord : .\scripts\create_venv.ps1"
+    Write-Host "Cree un environnement virtuel puis installe : python -m pip install -r requirements.txt"
     exit 1
 }
 
