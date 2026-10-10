@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -17,9 +17,16 @@ from djua_energy.chat.context_builder import (
 )
 from djua_energy.chat.prompts import SYSTEM_PROMPT, build_user_prompt
 from djua_energy.pipeline.inference import LocalInferenceEngine
+from djua_energy.config.openai_settings import configured_api_key, configured_model, generation_options
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
+LOCAL_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+
+
+def _configured_api_key() -> str | None:
+    """Read the local secret on every request so key rotation reaches running servers."""
+    return configured_api_key(LOCAL_ENV_PATH)
 
 
 @dataclass
@@ -52,9 +59,13 @@ class OpenAIResponsesClient:
         model: str | None = None,
         timeout_seconds: int = 45,
     ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        self._api_key = api_key
+        self.model = model or configured_model()
         self.timeout_seconds = timeout_seconds
+
+    @property
+    def api_key(self) -> str | None:
+        return self._api_key if self._api_key is not None else _configured_api_key()
 
     @property
     def available(self) -> bool:
@@ -76,8 +87,7 @@ class OpenAIResponsesClient:
                     ),
                 },
             ],
-            "temperature": 0.2,
-            "max_output_tokens": 450,
+            **generation_options(self.model, 450),
         }
         request = Request(
             OPENAI_RESPONSES_URL,
@@ -182,6 +192,29 @@ class DjuaChatService:
         self.dataset = dataset if dataset is not None else load_dataset()
         self.engine = engine or LocalInferenceEngine("artifacts")
         self.llm_client = llm_client or OpenAIResponsesClient()
+
+    def answer_from_context(self, message: str, context: dict[str, Any]) -> ChatResult:
+        """Answer with an already authorized realtime context, with no CSV fallback."""
+        from djua_energy.chat.realtime_context import realtime_fallback
+
+        fallback = realtime_fallback(context)
+        if ("kit" in context and not context["kit"]["found"]) or context.get("device_count") == 0:
+            return ChatResult(fallback, "realtime", context.get("kit", {}).get("device_id"), False,
+                              context, ["RealtimeTelemetryStore"], "Donnees indisponibles.")
+        if self.llm_client.available:
+            try:
+                answer = self.llm_client.generate(
+                    message + "\nRespecte le role et le perimetre fournis. Client: court, simple et actionnable. "
+                    "Admin: chiffres calcules et priorites. Technicien: details disponibles. "
+                    "Distingue observations, predictions, simulation et donnees absentes. Ne deduis jamais une cause certaine.", context)
+                return ChatResult(answer, "realtime", context.get("kit", {}).get("device_id"), True,
+                                  context, ["RealtimeTelemetryStore"])
+            except Exception as exc:
+                error = _friendly_llm_error(exc)
+        else:
+            error = "OpenAI indisponible; reponse locale fondee sur les donnees autorisees."
+        return ChatResult(fallback, "realtime", context.get("kit", {}).get("device_id"), False,
+                          context, ["RealtimeTelemetryStore"], error)
 
     def answer(self, message: str) -> ChatResult:
         query = extract_device_query(message)

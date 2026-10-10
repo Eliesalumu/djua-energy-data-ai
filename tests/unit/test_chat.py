@@ -8,6 +8,29 @@ class _NoLlmClient:
     available = False
 
 
+def test_openai_client_reloads_local_key_after_rotation(monkeypatch, tmp_path) -> None:
+    from djua_energy.chat import service
+
+    env_path = tmp_path / ".env"
+    monkeypatch.setattr(service, "LOCAL_ENV_PATH", env_path)
+    monkeypatch.setenv("OPENAI_API_KEY", "stale-key")
+    client = OpenAIResponsesClient()
+    assert client.api_key == "stale-key"
+    env_path.write_text('OPENAI_API_KEY="new-key"\n', encoding="utf-8")
+    assert client.api_key == "new-key"
+    env_path.write_text("OPENAI_API_KEY=rotated-key\n", encoding="utf-8")
+    assert client.api_key == "rotated-key"
+
+
+def test_openai_client_explicit_key_takes_precedence(monkeypatch, tmp_path) -> None:
+    from djua_energy.chat import service
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=local-key\n", encoding="utf-8")
+    monkeypatch.setattr(service, "LOCAL_ENV_PATH", env_path)
+    assert OpenAIResponsesClient(api_key="explicit-key").api_key == "explicit-key"
+
+
 def test_extract_device_query_normalizes_device_id() -> None:
     query = extract_device_query("Parle-moi du device 4")
 

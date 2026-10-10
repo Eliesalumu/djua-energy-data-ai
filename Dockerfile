@@ -13,6 +13,7 @@ COPY artifacts ./artifacts
 COPY data ./data
 COPY schemas ./schemas
 COPY src ./src
+COPY scripts/manage_whatsapp.py ./scripts/manage_whatsapp.py
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -e .

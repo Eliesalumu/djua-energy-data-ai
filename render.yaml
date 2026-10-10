@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: djua-energy-data-ai
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: djua-runtime
+      mountPath: /app/data/runtime
+      sizeGB: 1
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DJUA_OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: DJUA_ENV
+        value: production
+      - key: DJUA_DATABASE_URL
+        value: sqlite:////app/data/runtime/djua_realtime.sqlite
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_API_VERSION
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: WHATSAPP_GLOBAL_ROLES
+        value: ""

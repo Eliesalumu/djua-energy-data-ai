@@ -1,8 +1,48 @@
 from pathlib import Path
+import pytest
 
 import apps.api.main as api_main
 from djua_energy.solar_advisor.repository import SolarAdvisorRepository
 from djua_energy.solar_advisor.service import SolarAdvisorService
+
+
+@pytest.fixture(autouse=True)
+def isolate_openai_secrets(monkeypatch, tmp_path):
+    from djua_energy.config import openai_settings
+    monkeypatch.setattr(openai_settings, "LOCAL_ENV_PATH", tmp_path / "missing.env")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+
+def test_solar_advisor_reloads_rotated_key(monkeypatch, tmp_path):
+    from djua_energy.config import openai_settings
+    from djua_energy.solar_advisor.ai_assistant import SolarAdvisorAI
+    path = tmp_path / ".env"
+    monkeypatch.setattr(openai_settings, "LOCAL_ENV_PATH", path)
+    monkeypatch.delenv("RENDER", raising=False)
+    monkeypatch.delenv("DJUA_ENV", raising=False)
+    assistant = SolarAdvisorAI()
+    assert not assistant.enabled
+    path.write_text("OPENAI_API_KEY=first-key\n", encoding="utf-8")
+    assert assistant.api_key == "first-key"
+    path.write_text("OPENAI_API_KEY=second-key\n", encoding="utf-8")
+    assert assistant.api_key == "second-key"
+
+
+def test_render_uses_hosted_secret_instead_of_local_key(monkeypatch, tmp_path):
+    from djua_energy.config import openai_settings
+    from djua_energy.solar_advisor.ai_assistant import SolarAdvisorAI
+    path = tmp_path / ".env"
+    path.write_text("OPENAI_API_KEY=developer-key\n", encoding="utf-8")
+    monkeypatch.setattr(openai_settings, "LOCAL_ENV_PATH", path)
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "hosted-key")
+    assert SolarAdvisorAI().api_key == "hosted-key"
+
+
+def test_reasoning_model_omits_unsupported_temperature():
+    from djua_energy.config.openai_settings import generation_options
+    assert "temperature" not in generation_options("gpt-5-mini", 900)
+    assert generation_options("gpt-4.1-mini", 900)["temperature"] == 0.2
 
 
 def _payload() -> dict:
@@ -256,4 +296,3 @@ def test_solar_catalog_endpoint_exposes_synthetic_notice() -> None:
     assert catalogs["appliances"]
     assert catalogs["components"]
     assert "officielles" in catalogs["notice"]
-

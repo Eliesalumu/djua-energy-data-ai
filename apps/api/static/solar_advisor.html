@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DJUA — Solar Advisor</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f5f6f8; color: #1c2735; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 850px; margin: 40px auto; padding: 24px; }
+    h1 { margin-bottom: 0; }
+    a { color: #a84c00; }
+    #messages { min-height: 300px; max-height: 60vh; overflow-y: auto; padding: 12px 0; }
+    .message { padding: 16px 20px; margin: 12px 0; border-radius: 16px; background: white; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user { background: #ffecd9; margin-left: 15%; }
+    .message small { display: block; margin-top: 8px; color: #657080; white-space: normal; }
+    form { display: flex; gap: 10px; }
+    textarea { flex: 1; min-width: 0; padding: 12px; font: inherit; border: 1px solid #c6ccd4; border-radius: 12px; }
+    button { border: 0; border-radius: 12px; padding: 12px 20px; background: #e66b00; color: white; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #quote { background: white; padding: 20px; border-radius: 16px; margin: 20px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <a href="/demo/kit-console">Supervision des kits</a>
+  <h1>DJUA AI Solar Advisor</h1>
+  <p>Décrivez vos appareils et vos besoins. Nous avancerons ensemble vers une estimation solaire.</p>
+  <div id="messages" role="log" aria-label="Conversation"></div>
+  <form id="solarChat">
+    <select id="chatMode" aria-label="Type de message">
+      <option value="needs">Décrire mes besoins</option>
+      <option value="quote" disabled>Question sur le devis</option>
+    </select>
+    <textarea name="message" aria-label="Votre message" placeholder="J’ai une télévision et 8 ampoules à Kinshasa…" required></textarea>
+    <button type="submit">Envoyer</button>
+  </form>
+  <section id="quote" hidden aria-label="Estimation solaire"></section>
+</main>
+<script src="/static/progressive-text.js?v=1"></script>
+<script src="/static/solar_advisor.js?v=1"></script>
+</body>
+</html>

@@ -32,6 +32,7 @@ from djua_energy.chat.service import DjuaChatService
 from djua_energy.database.realtime_store import RealtimeTelemetryStore
 from djua_energy.kit_intelligence.service import build_kit_intelligence
 from djua_energy.solar_advisor.service import SolarAdvisorService
+from apps.api.routers.whatsapp import create_whatsapp_router
 
 app = FastAPI(
     title="Djua Energy IoT Demo",
@@ -48,6 +49,8 @@ realtime_store = RealtimeTelemetryStore()
 telemetry_service = TelemetryIngestionService(engine, realtime_store=realtime_store)
 chat_service = DjuaChatService(engine=engine)
 solar_advisor_service = SolarAdvisorService()
+
+app.include_router(create_whatsapp_router(realtime_store, chat_service))
 
 
 TELEMETRY_RECORD_EXAMPLE = {
@@ -570,6 +573,12 @@ def _evaluate_device_telemetry_payload(payload: DeviceTelemetryEvaluationRequest
                     latest.get("ambient_temperature_c"),
                 ),
             },
+        },
+        "model_input": {
+            "records_used": len(records),
+            "sliding_window_limit": telemetry_service.sliding_window_size,
+            "source": "sqlite_history_after_insert",
+            "records": records,
         },
         "maintenance_prediction": maintenance_prediction,
         "security_prediction": security_prediction,
@@ -1117,6 +1126,11 @@ def solar_advisor_conversation(payload: SolarConversationRequest) -> dict:
         return solar_advisor_service.conversation_step(payload.message, payload.context)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/demo/solar-advisor", include_in_schema=False)
+def solar_advisor_demo() -> FileResponse:
+    return FileResponse("apps/api/static/solar_advisor.html")
 
 
 @app.get(

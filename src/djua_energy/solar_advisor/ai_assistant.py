@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from djua_energy.config.openai_settings import configured_api_key, configured_model, generation_options
+from djua_energy.chat.service import _friendly_llm_error
 
 
 class SolarAdvisorAI:
@@ -15,8 +16,12 @@ class SolarAdvisorAI:
     """
 
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self.model = model or os.getenv("DJUA_OPENAI_MODEL", "gpt-4o-mini")
+        self._api_key = api_key
+        self.model = model or configured_model()
+
+    @property
+    def api_key(self) -> str | None:
+        return self._api_key if self._api_key is not None else configured_api_key()
 
     @property
     def enabled(self) -> bool:
@@ -40,7 +45,7 @@ class SolarAdvisorAI:
                 "used_ai": False,
                 "model": self.model,
                 "explanation": local_fallback,
-                "warning": f"Explication IA indisponible: {exc.__class__.__name__}. Fallback local utilise.",
+                "warning": _friendly_llm_error(exc),
             }
         return {
             "used_ai": True,
@@ -76,7 +81,7 @@ class SolarAdvisorAI:
                 "used_ai": False,
                 "model": self.model,
                 "answer": local_fallback,
-                "warning": f"Assistant IA indisponible ({exc.__class__.__name__}): reponse locale utilisee.",
+                "warning": _friendly_llm_error(exc),
             }
         return {
             "used_ai": True,
@@ -126,7 +131,7 @@ class SolarAdvisorAI:
                 "used_ai": False,
                 "model": self.model,
                 "message": local,
-                "warning": f"Presentation IA indisponible: {exc.__class__.__name__}. Fallback local utilise.",
+                "warning": _friendly_llm_error(exc),
             }
         return {
             "used_ai": True,
@@ -159,11 +164,11 @@ class SolarAdvisorAI:
                 max_output_tokens=900,
             )
             parsed = self._parse_json_object(text)
-        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
             parsed = fallback
             parsed["used_ai"] = False
             parsed["model"] = self.model
-            parsed["warning"] = "Assistant IA indisponible ou reponse non JSON: assistant local utilise."
+            parsed["warning"] = _friendly_llm_error(exc)
             return parsed
         parsed.setdefault("request_updates", {})
         parsed.setdefault("ready_for_quote", False)
@@ -208,8 +213,7 @@ class SolarAdvisorAI:
                 },
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.2,
-            "max_output_tokens": max_output_tokens,
+            **generation_options(self.model, max_output_tokens),
         }
         request = Request(
             "https://api.openai.com/v1/responses",
@@ -386,7 +390,7 @@ class SolarAdvisorAI:
         if any(w in q for w in ["batterie", "autonomie", "nuit", "stockage", "coupure"]):
             return (
                 f"Le kit comprend {sizing.get('battery_count', 1)} batterie(s) ({sizing.get('battery_technology', 'LiFePO4')}) "
-                f"pour une capacite utile de {sizing.get('battery_capacity_wh', 0)} Wh. "
+                f"pour une capacite utile de {sizing.get('battery_usable_capacity_wh', 0)} Wh. "
                 f"Elle assure une autonomie estimee a {sizing.get('autonomy_hours_estimated', 10)} heures "
                 f"afin d'alimenter vos appareils essentiels meme la nuit ou lors de coupures prolongees."
             )
@@ -401,7 +405,7 @@ class SolarAdvisorAI:
             return (
                 f"Une marge de securite de 20% a ete integree a vos besoins "
                 f"(basee sur {consumption.get('total_daily_energy_kwh', 0)} kWh/jour reels portes a {consumption.get('adjusted_daily_energy_wh', 0)} Wh/j). "
-                f"Le parc de batteries ({sizing.get('battery_capacity_wh', 0)} Wh) prend le relais lors des journees pluvieuses ou couvertes."
+                f"Le parc de batteries ({sizing.get('battery_usable_capacity_wh', 0)} Wh) prend le relais lors des journees pluvieuses ou couvertes."
             )
         if any(w in q for w in ["ajouter", "plus", "fer", "clim", "congelateur", "frigo"]):
             return (
@@ -416,4 +420,3 @@ class SolarAdvisorAI:
             f"pour un montant de {quote.get('total_estimated', 0):,} {quote.get('currency', 'XAF')}. "
             f"Un technicien validera avec vous les details avant la pose."
         )
-

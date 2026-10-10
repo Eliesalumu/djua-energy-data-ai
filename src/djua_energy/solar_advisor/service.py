@@ -88,8 +88,12 @@ class SolarAdvisorService:
         questions = self.conversation_engine.next_questions(request)
         has_appliances = bool(request.appliances)
         
-        # If user gave appliances, we can immediately produce a recommendation
-        can_recommend = has_appliances
+        # Finish gathering needs before generating the requested quote.
+        can_recommend = (
+            has_appliances
+            and bool(ai_turn.get("ready_for_quote"))
+            and "?" not in str(ai_turn.get("assistant_message", ""))
+        )
         recommendation = None
         if can_recommend:
             recommendation = self.recommend(asdict(request), save=True)
@@ -111,11 +115,13 @@ class SolarAdvisorService:
                 f"Parfait ! J'ai bien analysé vos besoins : **{app_summary}**{budget_str}.\n\n"
                 f"• **Consommation estimée** : {consumption['total_daily_energy_kwh']} kWh / jour (puissance de pointe : {int(consumption['simultaneous_power_w'])} W).\n"
                 f"• **Kit dimensionné** : {sizing['panel_count']} panneau(x) de {sizing['panel_power_w']} Wc ({sizing['pv_total_power_w']} Wc total), "
-                f"{sizing['battery_count']} batterie(s) {sizing['battery_technology']} ({sizing['battery_capacity_wh']} Wh utiles, autonomie {sizing['autonomy_hours_estimated']}h) "
+                f"{sizing['battery_count']} batterie(s) ({sizing['battery_usable_capacity_wh']} Wh utiles, autonomie {sizing['autonomy_hours_estimated']}h) "
                 f"et 1 onduleur {sizing['inverter_power_w']} W.\n"
                 f"• **Devis indicatif** : **{total_str} {quote['currency']}** (soit env. **{monthly_str} {quote['currency']} / mois** en formule Pay-As-You-Go 24 mois).\n\n"
                 f"Le devis complet est généré et synchronisé !"
             )
+        elif ai_turn.get("assistant_message"):
+            assistant_msg = ai_turn["assistant_message"]
         else:
             assistant_msg = (
                 "Bonjour ! Je suis DJUA AI Solar Advisor. Décrivez-moi simplement les appareils que vous souhaitez alimenter "
@@ -201,6 +207,9 @@ class SolarAdvisorService:
         )
 
     def _request_from_conversation_context(self, payload: dict[str, Any]) -> AdvisorRequest:
+        payload = dict(payload)
+        if isinstance(payload.get("city"), str):
+            payload["city"] = payload["city"].strip().lower()
         appliances = []
         for item in payload.get("appliances", []):
             if isinstance(item, ApplianceNeed):

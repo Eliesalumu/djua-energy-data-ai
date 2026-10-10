@@ -275,6 +275,13 @@ class RealtimeTelemetryStore:
             )
         return prediction_payload
 
+    def list_observed_device_ids(self) -> list[str]:
+        """Include devices that have measurements but no prediction yet."""
+        with self._connect() as connection:
+            return [row[0] for row in connection.execute(
+                "SELECT device_id FROM telemetry_records UNION SELECT device_id FROM device_state ORDER BY device_id"
+            )]
+
     def list_device_states(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
             rows = connection.execute(

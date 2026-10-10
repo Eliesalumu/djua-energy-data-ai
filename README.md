@@ -141,6 +141,11 @@ Pour activer l'explication IA apres devis, configurer une nouvelle cle OpenAI en
 $env:OPENAI_API_KEY="votre_nouvelle_cle"
 ```
 
+Le chat accepte aussi `OPENAI_API_KEY=...` dans le fichier local `.env` a la racine
+(ignore par Git). Cette valeur prend priorite sur la variable d'environnement et
+est relue a chaque requete pour permettre la rotation de cle sans redemarrage.
+Ne pas placer la cle dans le frontend.
+
 ## Donnees Boitier Attendues
 
 Le boitier envoie des mesures brutes. Le pipeline calcule ensuite les features IA.

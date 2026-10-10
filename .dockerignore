@@ -12,5 +12,6 @@ htmlcov/
 reports/
 data/raw/
 data/runtime/
-data/generated/
+data/generated/*
+!data/generated/mvp_dataset.csv
 notebooks/

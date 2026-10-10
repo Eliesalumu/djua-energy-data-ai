@@ -16,6 +16,8 @@ __pycache__/
 *.duckdb
 *.db
 *.sqlite3
+*.sqlite
+data/runtime/
 *.csv
 *.jsonl
 *.log

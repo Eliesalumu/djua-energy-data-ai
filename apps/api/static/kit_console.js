@@ -197,7 +197,15 @@ function formatJson(data) {
 }
 
 function renderJson() {
-  jsonView.textContent = formatJson(currentJsonTab === "payload" ? lastPayload : lastResponse);
+  const modelInput = lastResponse?.model_input || {
+    message: "Lance une analyse pour voir la fenetre historique reellement utilisee par le modele."
+  };
+  const views = {
+    payload: lastPayload,
+    model: modelInput,
+    response: lastResponse
+  };
+  jsonView.textContent = formatJson(views[currentJsonTab]);
 }
 
 function probabilityScore(value) {
@@ -410,6 +418,7 @@ function addMessage(role, text) {
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
   refreshIcons();
+  return div.querySelector("span");
 }
 
 function detectChatDomain(message) {
@@ -472,8 +481,8 @@ form.addEventListener("submit", async (event) => {
     currentJsonTab = "payload";
     renderJson();
     lastResponse = await postJson("/v1/devices/evaluate-from-telemetry", lastPayload);
-    currentJsonTab = "response";
-    document.querySelectorAll("[data-json-tab]").forEach((item) => item.classList.toggle("active", item.dataset.jsonTab === "response"));
+    currentJsonTab = "model";
+    document.querySelectorAll("[data-json-tab]").forEach((item) => item.classList.toggle("active", item.dataset.jsonTab === "model"));
     renderJson();
     renderResult(lastResponse);
     setApiStatus("Analyse OK");
@@ -495,8 +504,10 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+let chatBusy = false;
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (chatBusy) return;
   const input = chatForm.elements.message;
   const message = input.value.trim();
   if (!message) return;
@@ -506,14 +517,27 @@ chatForm.addEventListener("submit", async (event) => {
     addMessage("assistant", "Lance d'abord une analyse. Ensuite je pourrai expliquer ce kit avec ses mesures et sa prediction.");
     return;
   }
+  chatBusy = true;
+  const submit = chatForm.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = true;
+  const pending = addMessage("assistant", "Je prepare la reponse...");
   try {
     const answer = await postJson("/demo/kit-console/chat", {
       message,
       context: buildChatContext(message)
     });
-    addMessage("assistant", answer.answer || "Je n'ai pas trouve d'explication exploitable.");
+    await window.DjuaTyping.write(pending, answer.answer || "Je n'ai pas trouve d'explication exploitable.", () => {
+      chatLog.scrollTop = chatLog.scrollHeight;
+    });
+    if (answer.used_llm === false) {
+      addMessage("assistant", `Mode local de secours : ${answer.error || "OpenAI indisponible."}`);
+    }
   } catch (error) {
-    addMessage("assistant", `Je n'arrive pas a repondre pour le moment. Detail: ${error.message}`);
+    pending.textContent = `Je n'arrive pas a repondre pour le moment. Detail: ${error.message}`;
+  } finally {
+    chatBusy = false;
+    if (submit) submit.disabled = false;
+    input.focus();
   }
 });
 
