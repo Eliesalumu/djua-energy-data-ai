@@ -23,9 +23,19 @@ automatiquement. Ne jamais mettre la cle dans un frontend ou un Blueprint.
 ## Verification
 
 - `/health` doit repondre. `revision` indique `RENDER_GIT_COMMIT` et
-  `whatsapp_logic_version` doit valoir `openai-first-v3` : les reponses WhatsApp
+  `whatsapp_logic_version` doit valoir `conversational-demo-v4` : les reponses WhatsApp
   des comptes authentifies passent par OpenAI, meme sans telemetrie.
   `legacy` signale un ancien module charge.
+- Les salutations et questions generales ne chargent pas le parc. Le texte de
+  secours n'est pas transmis a OpenAI ; il est affiche uniquement en cas d'echec,
+  avec la mention explicite « Reponse de secours » et un code dans les logs.
+- Pour la demonstration demandee, si le stockage temps reel est vide, WhatsApp
+  lit le CSV synthetique embarque depuis le depot : 50 devices, sans ecriture
+  dans SQLite, sans prediction inventee et avec les memes controles de grants.
+  Des que des mesures persistent dans le stockage, cette source prend priorite
+  et le CSV n'est plus utilise. `DJUA_WHATSAPP_DEMO_DATA=false` desactive la demo.
+- Les chemins du dataset et des modeles sont resolus depuis le fichier de l'API
+  dans le depot, meme quand le package metier est installe dans un virtualenv.
 - En runtime Python natif, `pip install -r requirements.txt` installe aussi
   le projet en editable (`-e .`), afin de charger le code metier de `src`
   depuis le depot courant, sans reutiliser une ancienne copie installee.

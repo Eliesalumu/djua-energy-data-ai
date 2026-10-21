@@ -30,9 +30,9 @@ class _RedactWebhookQuery(logging.Filter):
         return True
 
 
-def create_whatsapp_router(store, chat, *, repository=None, client=None, run_worker=True) -> APIRouter:
+def create_whatsapp_router(store, chat, *, repository=None, client=None, run_worker=True, demo_dataset_path=None) -> APIRouter:
     repository = repository or LazyResource(lambda: WhatsAppRepository(store.database_path))
-    service = WhatsAppService(repository, store, chat, client or WhatsAppCloudClient())
+    service = WhatsAppService(repository, store, chat, client or WhatsAppCloudClient(), demo_dataset_path=demo_dataset_path)
     logging.getLogger("uvicorn.access").addFilter(_RedactWebhookQuery())
 
     @asynccontextmanager

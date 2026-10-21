@@ -235,25 +235,31 @@ class DjuaChatService:
         if context.get("channel") != "whatsapp" and (("kit" in context and not context["kit"]["found"]) or context.get("device_count") == 0):
             return ChatResult(fallback, "realtime", context.get("kit", {}).get("device_id"), False,
                               context, ["RealtimeTelemetryStore"], "Donnees indisponibles.")
+        error_code = "AI_NOT_CONFIGURED"
         if self.llm_client.available:
             try:
+                llm_context = {key: value for key, value in context.items() if key != "fallback_answer"}
                 answer = self.llm_client.generate(
                     message + "\nRespecte le role et le perimetre fournis. Client: court, simple et actionnable. "
                     "Admin: chiffres calcules et priorites. Technicien: details disponibles. "
-                    "Pour WhatsApp, presente-toi comme DJUA Bot et reponds naturellement aux questions generales, "
+                    "Pour WhatsApp, tu es DJUA Bot. Reponds naturellement aux questions generales, "
                     "a l'aide et aux demandes d'explication, meme sans device. Les explications generales sur "
                     "l'energie solaire peuvent utiliser tes connaissances, sans les presenter comme des mesures du parc. "
                     "Respecte le statut backend (refus, selection requise, donnees absentes). "
-                    "fallback_answer est une indication factuelle de secours, pas un texte a recopier systematiquement. "
-                    "Distingue observations, predictions, simulation et donnees absentes. Ne deduis jamais une cause certaine.", context)
+                    "Si status=non_data, reponds uniquement a la conversation : une salutation appelle une salutation breve, "
+                    "sans bilan du parc, sans erreur de device et sans te representer a chaque reponse. "
+                    "Distingue observations, predictions, simulation et donnees absentes. Ne deduis jamais une cause certaine.", llm_context)
                 return ChatResult(answer, "realtime", context.get("kit", {}).get("device_id"), True,
-                                  context, ["RealtimeTelemetryStore"])
+                                  context, [context.get("source", context.get("kit", {}).get("source", "RealtimeTelemetryStore"))])
             except Exception as exc:
                 error = _friendly_llm_error(exc)
+                error_code = _llm_error_code(exc)
         else:
             error = "OpenAI indisponible; reponse locale fondee sur les donnees autorisees."
+        if context.get("channel") == "whatsapp":
+            fallback = "OpenAI est indisponible. Réponse de secours :\n" + fallback
         return ChatResult(fallback, "realtime", context.get("kit", {}).get("device_id"), False,
-                          context, ["RealtimeTelemetryStore"], error)
+                          context, [context.get("source", "RealtimeTelemetryStore")], error, error_code)
 
     def answer(self, message: str) -> ChatResult:
         query = extract_device_query(message)

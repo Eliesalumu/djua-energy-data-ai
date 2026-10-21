@@ -77,9 +77,19 @@ def test_health_identifies_loaded_whatsapp_logic_and_render_revision(monkeypatch
     status, _, body = request(main.app, "/health")
     assert status == 200
     assert json.loads(body)["revision"] == "test-revision"
-    assert json.loads(body)["whatsapp_logic_version"] == "openai-first-v3"
+    assert json.loads(body)["whatsapp_logic_version"] == "conversational-demo-v4"
     monkeypatch.delattr(main.whatsapp_business, "LOGIC_VERSION")
     assert main.health()["whatsapp_logic_version"] == "legacy"
+
+
+def test_project_resources_resolve_from_api_when_package_is_installed(tmp_path):
+    from djua_energy.config import runtime
+    namespace = {"__file__": str(tmp_path / "venv/lib/python3.14/site-packages/djua_energy/config/runtime.py")}
+    exec(compile(main.FilePath(runtime.__file__).read_text(), runtime.__file__, "exec"), namespace)
+    root = main.FilePath(main.__file__).resolve().parents[2]
+    assert namespace["PROJECT_ROOT"] == root
+    assert namespace["project_path"]("data/generated/mvp_dataset.csv").is_file()
+    assert namespace["project_path"]("artifacts/maintenance_model.joblib").is_file()
 
 
 def test_import_and_health_work_without_models_dataset_or_database(tmp_path):

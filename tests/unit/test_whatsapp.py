@@ -325,6 +325,102 @@ def test_llm_outage_uses_authorized_realtime_fallback(setup):
     assert "Action recommandee" in answer
 
 
+@pytest.mark.parametrize("message", ["Bonjour", "bojour", "Salut, ça va ?", "Merci !", "Explique comment fonctionne un kit solaire"])
+def test_conversation_has_no_device_error_or_canned_text_in_llm_context(setup, monkeypatch, message):
+    calls = []
+    class AI:
+        available = True
+        def generate(self, prompt, context):
+            calls.append(context)
+            assert context["status"] == "non_data"
+            assert "fallback_answer" not in context
+            assert "no_devices" not in json.dumps(context)
+            return "Bonjour ! Que souhaitez-vous savoir ?"
+    def no_data(*args, **kwargs):
+        pytest.fail("A conversational request must not look up equipment")
+    monkeypatch.setattr(setup.store, "list_observed_device_ids", no_data)
+    setup.service.chat = DjuaChatService(dataset=pd.DataFrame(), engine=object(), llm_client=AI())
+    assert setup.service.answer(ADMIN, message) == "Bonjour ! Que souhaitez-vous savoir ?"
+    assert len(calls) == 1
+
+
+def test_bundled_demo_provides_fifty_devices_without_database_seed(tmp_path):
+    store = RealtimeTelemetryStore(tmp_path / "demo.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(ADMIN, "admin")
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient(),
+                              demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    service.answer(ADMIN, "Comment va mon parc ?")
+    context = chat.calls[-1]
+    assert context["device_count"] == 50
+    assert context["telemetry_available"] is True
+    assert context["source"] == "SyntheticMvpDataset"
+    assert all(device["provenance"]["synthetic_or_simulated"] for device in context["devices"])
+    assert store.list_observed_device_ids() == []
+    # Same source remains available after creating a fresh service, without seeding SQLite.
+    restarted = WhatsAppService(repo, store, chat, FakeClient(),
+                                demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    restarted.answer(ADMIN, "Montre device-1")
+    assert chat.calls[-1]["kit"]["found"] is True
+    assert chat.calls[-1]["kit"]["predictions"] is None
+
+
+def test_demo_respects_customer_grants(tmp_path):
+    store = RealtimeTelemetryStore(tmp_path / "demo.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(CUSTOMER, "customer")
+    repo.grant_device(CUSTOMER, "device-1")
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient(),
+                              demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    service.answer(CUSTOMER, "Quel est le niveau de ma batterie ?")
+    assert chat.calls[-1]["access"]["device_ids"] == ["device-1"]
+    assert chat.calls[-1]["kit"]["provenance"]["synthetic_or_simulated"]
+    service.answer(CUSTOMER, "Montre device-2")
+    assert chat.calls[-1]["status"] == "access_denied"
+    assert chat.calls[-1]["access"]["device_ids"] == []
+
+
+def test_demo_never_replaces_persisted_telemetry(setup):
+    setup.service = WhatsAppService(setup.repo, setup.store, setup.chat, setup.client,
+                                   demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    setup.service.answer(ADMIN, "Comment va le parc ?")
+    assert setup.chat.calls[-1]["device_count"] == 2
+    assert setup.chat.calls[-1]["source"] == "RealtimeTelemetryStore"
+
+
+def test_demo_can_be_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("DJUA_WHATSAPP_DEMO_DATA", "false")
+    store = RealtimeTelemetryStore(tmp_path / "empty.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(ADMIN, "admin")
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient(),
+                              demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    service.answer(ADMIN, "Comment va le parc ?")
+    assert chat.calls[-1]["status"] == "no_devices"
+
+
+def test_raw_telemetry_is_used_even_without_prediction_states(tmp_path):
+    store = RealtimeTelemetryStore(tmp_path / "raw.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(ADMIN, "admin")
+    store.insert_telemetry_records([{"message_id": "raw", "device_id": "device-live",
+                                     "event_time": "2026-10-21T12:00:00Z", "state_of_charge_pct": 80,
+                                     "source": "iot"}])
+    assert store.list_device_states() == []
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient(),
+                              demo_dataset_path=PROJECT_ROOT / "data/generated/mvp_dataset.csv")
+    service.answer(ADMIN, "Comment va le parc ?")
+    context = chat.calls[-1]
+    assert context["device_count"] == 1 and context["telemetry_available"] is True
+    assert context["source"] == "RealtimeTelemetryStore"
+    assert context["devices"][0]["observed"]["state_of_charge_pct"] == 80
+    assert not context["devices"][0]["provenance"]["synthetic_or_simulated"]
+
+
 def test_incoming_message_dedup_and_restart(setup):
     assert setup.repo.enqueue("wamid.test", CUSTOMER, "Comment va mon kit ?")
     assert not WhatsAppRepository(setup.store.database_path).enqueue("wamid.test", CUSTOMER, "same")

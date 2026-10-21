@@ -7,9 +7,11 @@ import unicodedata
 from djua_energy.chat.realtime_context import build_realtime_fleet_context, build_realtime_kit_context
 from .client import WhatsAppSendError
 from .config import channel_logger, setting
+from djua_energy.config.runtime import LazyResource
+from .demo_data import SyntheticDatasetStore
 
 logger = channel_logger("worker")
-LOGIC_VERSION = "openai-first-v3"
+LOGIC_VERSION = "conversational-demo-v4"
 
 
 def bootstrap_admin(repository) -> bool:
@@ -49,23 +51,36 @@ def detect_topic(message: str) -> str:
 
 
 def is_non_data_request(message: str) -> bool:
-    # Match complete requests only: an identity prefix must not bypass data permissions.
+    # Explicit equipment references always go through access control, even after a greeting.
     text = re.sub(r"[^\w\s]", " ", normalized(message))
     text = " ".join(text.split())
-    return text in {
-        "tu es qui", "qui es tu", "qui etes vous", "vous etes qui",
-        "que peux tu faire", "que pouvez vous faire", "aide", "help",
-        "comment fonctionnes tu", "comment fonctionnez vous",
-    }
+    explicit_id = re.search(r"\b(?:device|kit)[_-][\w-]+|\bdevice\s+\d+\b", normalized(message))
+    if not explicit_id and re.search(r"\b(?:explique|expliquer|pourquoi|comment fonctionne|qu est ce|c est quoi)\b", text) and not re.search(r"\b(mon|ma|mes|notre|nos)\b", text):
+        return True
+    if explicit_id or re.search(r"\b(device|kit|parc|client|devices|kits|mesures|donnees|niveau|installation|montre|consulte|etat)\b", text):
+        return False
+    return detect_topic(message) == "general"
 
 
 class WhatsAppService:
-    def __init__(self, repository, store, chat, client):
+    def __init__(self, repository, store, chat, client, *, demo_dataset_path=None):
         self.repository, self.store, self.chat, self.client = repository, store, chat, client
+        self.demo_store = LazyResource(lambda: SyntheticDatasetStore(demo_dataset_path)) if demo_dataset_path else None
         logger.info("WHATSAPP DJUA logic_version=%s", LOGIC_VERSION)
 
     def has_global_access(self, user: dict) -> bool:
         return user["role"] == "admin"
+
+    def _data_store(self):
+        if self.store.list_observed_device_ids() or self.demo_store is None or setting("DJUA_WHATSAPP_DEMO_DATA").lower() in {"0", "false", "off"}:
+            return self.store
+        try:
+            count = len(self.demo_store.list_observed_device_ids())
+        except (OSError, ValueError):
+            logger.error("WHATSAPP DATA synthetic dataset unavailable")
+            return self.store
+        logger.info("WHATSAPP DATA source=synthetic_mvp_dataset device_count=%s simulation=true", count)
+        return self.demo_store
 
     def answer(self, phone: str, message: str) -> str:
         user = self.repository.get_user(phone)
@@ -80,11 +95,14 @@ class WhatsAppService:
         logger.info("WHATSAPP DJUA request role=%s intent=%s scope=%s", user["role"], intent, scope_name)
         if intent == "non_data":
             logger.info("WHATSAPP DATA accessible_device_count=0 telemetry_available=false (not requested)")
-            return self._reply(message, scope, ("Je suis DJUA Bot, l'assistant de supervision de DJUA ENERGY. "
+            fallback = ("Bonjour ! Comment puis-je vous aider aujourd'hui ?" if re.search(r"\b(bonjour|bonsoir|salut|coucou|hello|hey)\b", normalized(message)) else
+                    "Je suis DJUA Bot, l'assistant de supervision de DJUA ENERGY. "
                     "Je peux vous aider à consulter l'état des kits solaires, la batterie, "
-                    "la production, les alertes et les informations disponibles dans votre périmètre d'accès."), "non_data")
+                    "la production, les alertes et les informations disponibles dans votre périmètre d'accès.")
+            return self._reply(message, scope, fallback, "non_data")
         text = normalized(message)
         topic = detect_topic(message)
+        store = self._data_store()
 
         # Client lookup is a backend operation, not an instruction delegated to the LLM.
         client_query = re.search(r"\bclient\s+([\w .'-]+)", message, re.I)
@@ -100,15 +118,15 @@ class WhatsAppService:
                 return self._reply(message, scope, "Client introuvable ou recherche ambigue. Precisez son identifiant.", "selection_required")
             customer_id = matches[0]["customer_id"]
             devices = self.repository.devices_for_customer(customer_id)
-            context = build_realtime_fleet_context(self.store, [row["device_id"] for row in devices], topic)
+            context = build_realtime_fleet_context(store, [row["device_id"] for row in devices], topic)
             context["access"] = {**scope, "customer_id": customer_id, "device_ids": [row["device_id"] for row in devices]}
             return self._answer_context(message, context)
 
         if global_access:
             registered = {row["device_id"]: row for row in self.repository.registered_devices()}
-            for device_id in self.store.list_observed_device_ids():
-                state = self.store.get_device_state(device_id)
-                recent = self.store.recent_records_for_device(device_id, limit=1) if not state else []
+            for device_id in store.list_observed_device_ids():
+                state = store.get_device_state(device_id)
+                recent = store.recent_records_for_device(device_id, limit=1) if not state else []
                 registered[device_id] = {"device_id": device_id, "kit_id": (state or (recent[-1] if recent else {})).get("kit_id") or registered.get(device_id, {}).get("kit_id")}
             candidates = list(registered.values())
         else:
@@ -154,9 +172,9 @@ class WhatsAppService:
             return self._reply(message, {**scope, "device_ids": selected}, "Vous avez plusieurs kits. Lequel souhaitez-vous consulter ? " + ", ".join(selected[:20]), "selection_required")
         scope["device_ids"] = selected
         if len(selected) == 1 and not (global_access and fleet_question):
-            context = {"access": scope, "topic": topic, "kit": build_realtime_kit_context(self.store, selected[0])}
+            context = {"access": scope, "topic": topic, "kit": build_realtime_kit_context(store, selected[0])}
         else:
-            context = build_realtime_fleet_context(self.store, selected, topic)
+            context = build_realtime_fleet_context(store, selected, topic)
             context["access"] = scope
         return self._answer_context(message, context)
 
@@ -173,7 +191,7 @@ class WhatsAppService:
             "capabilities": ["supervision des kits solaires", "batterie", "production", "alertes", "explications et aide"],
         }
         result = self.chat.answer_from_context(message, context)
-        logger.info("WHATSAPP DJUA response source=%s", "openai" if getattr(result, "used_llm", False) else "fallback")
+        logger.info("WHATSAPP DJUA response source=%s error_code=%s", "openai" if getattr(result, "used_llm", False) else "fallback", getattr(result, "error_code", None) or "none")
         return result.answer
 
     def _answer_context(self, message: str, context: dict) -> str:

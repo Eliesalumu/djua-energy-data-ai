@@ -68,7 +68,8 @@ if (os.getenv("RENDER") or os.getenv("DJUA_ENV") == "production") and not (os.ge
 if not os.getenv("OPENAI_API_KEY"):
     logger.warning("AI_PROVIDER configuration missing: OPENAI_API_KEY; local fallback remains enabled")
 
-app.include_router(create_whatsapp_router(realtime_store, chat_service))
+app.include_router(create_whatsapp_router(realtime_store, chat_service,
+    demo_dataset_path=FilePath(__file__).resolve().parents[2] / "data/generated/mvp_dataset.csv"))
 
 
 TELEMETRY_RECORD_EXAMPLE = {

@@ -53,7 +53,7 @@ def build_realtime_kit_context(store, device_id: str) -> dict:
                  "cause": "Non determinable a partir de cette variation seule."}
     return {
         "device_id": device_id, "kit_id": latest.get("kit_id") or (state or {}).get("kit_id"),
-        "found": bool(latest or state), "source": "RealtimeTelemetryStore",
+        "found": bool(latest or state), "source": getattr(store, "context_source", "RealtimeTelemetryStore"),
         "telemetry_available": any(value is not None for field, value in observed.items() if field != "event_time"),
         "provenance": {"synthetic_or_simulated": synthetic, "labels": source_labels,
                        "notice": "Mesures stockees, origine physique non verifiee." if not synthetic else "Donnees de simulation : ne pas les presenter comme des mesures terrain reelles."},
@@ -87,7 +87,7 @@ def build_realtime_fleet_context(store, device_ids: list[str], topic: str = "gen
                                                (k["predictions"] or {}).get("risk_score", 0)), reverse=True)
     matching = [kit for kit in priorities if topic not in kit["flags"] or kit["flags"][topic]]
     return {
-        "source": "RealtimeTelemetryStore", "generated_at": datetime.now(UTC).isoformat(),
+        "source": getattr(store, "context_source", "RealtimeTelemetryStore"), "generated_at": datetime.now(UTC).isoformat(),
         "scope_device_count": len(kits), "device_count": len(available),
         "telemetry_available": any(kit["telemetry_available"] for kit in kits),
         "kit_count": len({k["kit_id"] for k in available if k["kit_id"]}),
