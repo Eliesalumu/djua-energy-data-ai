@@ -39,6 +39,26 @@ def dataset():
     return pd.read_csv(PROJECT_ROOT / "data/generated/mvp_dataset.csv")
 
 
+def test_static_directory_uses_api_source_when_package_is_installed(tmp_path):
+    code = """
+import sys
+from pathlib import Path
+import djua_energy.config.runtime as runtime
+runtime.PROJECT_ROOT = Path(sys.argv[1]) / '.venv' / 'lib' / 'python3.14'
+from apps.api import main
+expected = Path(main.__file__).resolve().parents[2] / 'apps' / 'api' / 'static'
+assert main.STATIC_DIR == expected
+assert (main.STATIC_DIR / 'kit_console.html').is_file()
+assert main.health()['status'] == 'ok'
+print('STATIC_IMPORT_OK')
+"""
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "src")]))
+    result = subprocess.run([sys.executable, "-c", code, str(tmp_path)], cwd=tmp_path, env=env,
+                            capture_output=True, timeout=60)
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert b"STATIC_IMPORT_OK" in result.stdout
+
+
 def test_health_is_json_and_does_not_touch_dependencies(monkeypatch):
     class Broken:
         def __getattr__(self, name):

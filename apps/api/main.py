@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 import logging
 import os
 import sqlite3
+from pathlib import Path as FilePath
 from typing import Annotated, Any, Literal
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -41,7 +42,7 @@ from djua_energy.config.runtime import PROJECT_ROOT, LazyResource, project_path
 from djua_energy.config.http import cors_origins
 
 logger = logging.getLogger(__name__)
-STATIC_DIR = PROJECT_ROOT / "apps/api/static"
+STATIC_DIR = FilePath(__file__).resolve().parents[2] / "apps" / "api" / "static"
 
 app = FastAPI(
     title="Djua Energy IoT Demo",
