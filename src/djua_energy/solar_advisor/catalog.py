@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Iterable
 
 from djua_energy.solar_advisor.schemas import ApplianceCatalogItem, Component
+from djua_energy.config.runtime import project_path
 
 
-DEFAULT_CATALOG_DIR = Path("data/catalogs")
+DEFAULT_CATALOG_DIR = project_path("data/catalogs")
 
 
 def _float(value: str | None, default: float = 0.0) -> float:

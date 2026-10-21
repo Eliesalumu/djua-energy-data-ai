@@ -4,9 +4,15 @@ import hmac
 import json
 import logging
 import shutil
+import socket
+import subprocess
+import sys
+import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 import pandas as pd
 import pytest
@@ -15,10 +21,11 @@ from fastapi import FastAPI
 from apps.api.routers.whatsapp import _RedactWebhookQuery, create_whatsapp_router
 from djua_energy.channels.whatsapp.client import WhatsAppCloudClient, WhatsAppSendError
 from djua_energy.channels.whatsapp.repository import WhatsAppRepository
-from djua_energy.channels.whatsapp.service import WhatsAppService
+from djua_energy.channels.whatsapp.service import WhatsAppService, bootstrap_admin
 from djua_energy.chat.realtime_context import build_realtime_fleet_context, build_realtime_kit_context
 from djua_energy.chat.service import DjuaChatService
 from djua_energy.database.realtime_store import RealtimeTelemetryStore
+from djua_energy.config.runtime import PROJECT_ROOT
 
 # Reserved fictional numbers, never real recipients; outbound client is always mocked.
 CUSTOMER = "15550100001"
@@ -68,7 +75,7 @@ def seeded_database(tmp_path_factory):
 
 @pytest.fixture
 def setup(tmp_path, monkeypatch, seeded_database):
-    for key in ("RENDER", "DJUA_ENV", "WHATSAPP_GLOBAL_ROLES", "WHATSAPP_APP_SECRET", "WHATSAPP_PHONE_NUMBER_ID"):
+    for key in ("RENDER", "DJUA_ENV", "WHATSAPP_GLOBAL_ROLES", "WHATSAPP_APP_SECRET", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_BOOTSTRAP_PHONE"):
         monkeypatch.delenv(key, raising=False)
     path = tmp_path / "live.sqlite"
     shutil.copyfile(seeded_database, path)
@@ -323,8 +330,8 @@ def test_meta_errors_do_not_expose_token(monkeypatch):
 def test_meta_client_sends_expected_request(monkeypatch):
     from djua_energy.channels.whatsapp import client
     monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "test-token")
-    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "123")
-    monkeypatch.setenv("WHATSAPP_API_VERSION", "v23.0")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "1386186767909577")
+    monkeypatch.setenv("WHATSAPP_API_VERSION", "v25.0")
     captured = []
 
     class Response:
@@ -341,6 +348,233 @@ def test_meta_client_sends_expected_request(monkeypatch):
 
     monkeypatch.setattr(client, "urlopen", send)
     WhatsAppCloudClient().send_text(CUSTOMER, "Bonjour")
-    assert captured[0].full_url == "https://graph.facebook.com/v23.0/123/messages"
+    assert captured[0].full_url == "https://graph.facebook.com/v25.0/1386186767909577/messages"
+    assert captured[0].get_header("Authorization") == "Bearer test-token"
+    assert captured[0].get_header("Content-type") == "application/json"
+    assert json.loads(captured[0].data)["recipient_type"] == "individual"
     assert json.loads(captured[0].data)["to"] == CUSTOMER
     assert json.loads(captured[0].data)["text"]["body"] == "Bonjour"
+
+
+def production_settings(monkeypatch):
+    for name, value in {
+        "DJUA_ENV": "production", "WHATSAPP_PHONE_NUMBER_ID": "1386186767909577",
+        "WHATSAPP_API_VERSION": "v25.0", "WHATSAPP_APP_SECRET": "fixture-app-secret",
+        "WHATSAPP_ACCESS_TOKEN": "fixture-access-token", "WHATSAPP_VERIFY_TOKEN": "fixture-verify-token",
+        "WHATSAPP_GLOBAL_ROLES": "",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+
+def signed_body(event):
+    raw = json.dumps(event, ensure_ascii=False, indent=2).encode("utf-8")
+    signature = "sha256=" + hmac.new(b"fixture-app-secret", raw, hashlib.sha256).hexdigest()
+    return raw, [(b"x-hub-signature-256", signature.encode())]
+
+
+def test_production_target_phone_accepts_raw_signed_body_once(setup, monkeypatch, caplog):
+    production_settings(monkeypatch)
+    event = payload("wamid.production")
+    value = event["entry"][0]["changes"][0]["value"]
+    value["metadata"]["phone_number_id"] = "1386186767909577"
+    value["messages"][0]["text"]["body"] = "Quel est l’état de ma batterie ?"
+    raw, headers = signed_body(event)
+    app = make_app(setup)
+    with caplog.at_level(logging.INFO):
+        status, result = request(app, body=raw, headers=headers)
+        assert status == 200 and json.loads(result)["accepted"] == 1
+        assert json.loads(request(app, body=raw, headers=headers)[1])["accepted"] == 0
+        assert request(app, body=raw + b" ", headers=headers)[0] == 403
+        assert setup.service.process_next()
+        assert not setup.service.process_next()
+    assert len(setup.client.sent) == 1
+    assert "signature valid" in caplog.text and "deduplicated" in caplog.text
+    assert "WORKER sent" in caplog.text
+    assert "fixture-app-secret" not in caplog.text
+    assert "fixture-access-token" not in caplog.text
+    assert CUSTOMER not in caplog.text
+
+
+def test_production_wrong_phone_id_is_ignored(setup, monkeypatch):
+    production_settings(monkeypatch)
+    raw, headers = signed_body(payload("wrong-phone"))
+    status, result = request(make_app(setup), body=raw, headers=headers)
+    assert status == 200 and json.loads(result)["accepted"] == 0
+    assert not setup.service.process_next()
+    assert not setup.chat.calls
+
+
+def test_signed_status_event_is_ignored_without_metadata_or_ai(setup, monkeypatch):
+    production_settings(monkeypatch)
+    event = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {"statuses": [{"id": "wamid.status", "status": "delivered"}]}}]}]}
+    raw, headers = signed_body(event)
+    status, result = request(make_app(setup), body=raw, headers=headers)
+    assert status == 200 and json.loads(result)["accepted"] == 0
+    assert not setup.chat.calls and not setup.client.sent
+
+
+def test_startup_logs_missing_variable_names_and_keeps_app_running(setup, monkeypatch, caplog):
+    production_settings(monkeypatch)
+    monkeypatch.delenv("WHATSAPP_APP_SECRET")
+    monkeypatch.delenv("WHATSAPP_PHONE_NUMBER_ID")
+    app = make_app(setup)
+    async def run():
+        async with app.router.lifespan_context(app):
+            status, response = await asgi_request(app, method="GET", query=b"hub.mode=subscribe&hub.verify_token=fixture-verify-token&hub.challenge=startup-ok")
+            assert status == 200 and response == b"startup-ok"
+    asyncio.run(run())
+    assert "WHATSAPP_APP_SECRET" in caplog.text
+    assert "WHATSAPP_PHONE_NUMBER_ID" in caplog.text
+    assert "fixture-access-token" not in caplog.text
+    assert request(app, body=json.dumps(payload()).encode())[0] == 503
+
+
+def test_invalid_production_credentials_keep_messages_pending(setup, monkeypatch):
+    production_settings(monkeypatch)
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "<TOKEN_META>")
+    setup.repo.enqueue("pending-config", CUSTOMER, "Comment va mon kit ?")
+    app = make_app(setup, run_worker=True)
+    async def run():
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(.05)
+    asyncio.run(run())
+    assert setup.repo.message_status("pending-config")["status"] == "pending"
+    assert not setup.client.sent and not setup.chat.calls
+
+
+def test_missing_telemetry_answers_explicitly_without_llm(setup):
+    class NoInference:
+        available = True
+        def generate(self, message, context):
+            pytest.fail("Missing telemetry must not reach OpenAI")
+    setup.repo.grant_device(CUSTOMER, "DEVICE_NO_DATA")
+    setup.service.chat = DjuaChatService(dataset=pd.DataFrame(), engine=object(), llm_client=NoInference())
+    result = setup.service.answer(CUSTOMER, "Comment va DEVICE_NO_DATA ?")
+    assert "Aucune mesure ni prediction disponible" in result
+
+
+def test_whatsapp_and_admin_repository_use_realtime_database(monkeypatch, tmp_path):
+    from djua_energy.database.realtime_store import _database_path_from_env
+    path = tmp_path / "shared.sqlite"
+    monkeypatch.setenv("DJUA_DATABASE_URL", "sqlite:///" + path.as_posix())
+    store = RealtimeTelemetryStore()
+    repo = WhatsAppRepository(store.database_path)
+    admin_repository = WhatsAppRepository(_database_path_from_env())
+    assert repo.database_path == admin_repository.database_path == store.database_path == path
+    assert repo.enqueue("same-db", CUSTOMER, "Bonjour")
+    assert admin_repository.message_status("same-db")["status"] == "pending"
+
+
+def test_full_app_starts_with_target_meta_settings_and_serves_health(tmp_path):
+    with socket.socket() as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        port = reservation.getsockname()[1]
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(PROJECT_ROOT), str(PROJECT_ROOT / "src")]),
+               DJUA_ENV="production", DJUA_DATABASE_URL="sqlite:///" + (tmp_path / "startup.sqlite").as_posix(),
+               WHATSAPP_PHONE_NUMBER_ID="1386186767909577", WHATSAPP_API_VERSION="v25.0",
+               WHATSAPP_APP_SECRET="fixture-app-secret", WHATSAPP_ACCESS_TOKEN="fixture-access-token",
+               WHATSAPP_VERIFY_TOKEN="fixture-verify-token", WHATSAPP_GLOBAL_ROLES="",
+               WHATSAPP_BOOTSTRAP_PHONE=ADMIN,
+               CORS_ORIGINS="http://localhost:3000", FRONTEND_URL="http://localhost:3000")
+    process = subprocess.Popen([sys.executable, "-m", "uvicorn", "apps.api.main:app", "--host", "127.0.0.1", "--port", str(port)],
+                               cwd=PROJECT_ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                pytest.fail("Application exited during startup")
+            try:
+                with urlopen(f"http://127.0.0.1:{port}/health", timeout=1) as response:
+                    assert response.status == 200
+                    assert json.loads(response.read())["status"] == "ok"
+                break
+            except (URLError, TimeoutError, OSError):
+                time.sleep(.1)
+        else:
+            pytest.fail("Application health did not become available")
+        registered = WhatsAppRepository(tmp_path / "startup.sqlite").get_user(ADMIN)
+        assert registered["role"] == "admin" and registered["active"] == 1
+        assert registered["display_name"] == "Admin test"
+        with urlopen(f"http://127.0.0.1:{port}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token=fixture-verify-token&hub.challenge=meta-startup-0123", timeout=5) as response:
+            assert response.status == 200
+            assert response.read() == b"meta-startup-0123"
+            assert response.headers.get_content_type() == "text/plain"
+    finally:
+        process.terminate()
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_admin_bootstrap_absent_or_blank_does_not_access_database(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("WHATSAPP_BOOTSTRAP_PHONE", raising=False)
+    else:
+        monkeypatch.setenv("WHATSAPP_BOOTSTRAP_PHONE", value)
+    class NoAccess:
+        def __getattr__(self, name):
+            pytest.fail("Empty bootstrap must not access SQLite")
+    assert bootstrap_admin(NoAccess()) is False
+
+
+def test_admin_bootstrap_creates_once_and_does_not_log_phone(setup, monkeypatch, caplog):
+    phone = "15550100008"
+    monkeypatch.setenv("WHATSAPP_BOOTSTRAP_PHONE", "+1 (555) 010-0008")
+    with caplog.at_level(logging.INFO):
+        assert bootstrap_admin(setup.repo)
+        first = setup.repo.get_user(phone)
+        assert bootstrap_admin(setup.repo)
+        assert bootstrap_admin(WhatsAppRepository(setup.store.database_path))
+    assert setup.repo.get_user(phone)["id"] == first["id"]
+    assert first["role"] == "admin" and first["active"] == 1 and first["display_name"] == "Admin test"
+    with setup.repo.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM whatsapp_users WHERE phone_number=?", (phone,)).fetchone()[0] == 1
+    assert "WhatsApp admin bootstrap completed" in caplog.text
+    assert phone not in caplog.text and "+1 (555) 010-0008" not in caplog.text
+
+
+@pytest.mark.parametrize("other_role", ["customer", "technician", "support"])
+def test_admin_bootstrap_updates_only_selected_account_preserving_links(setup, monkeypatch, other_role):
+    setup.repo.upsert_user(CUSTOMER, "customer", "customer-a", "Old name", active=False)
+    setup.repo.upsert_user(OTHER, other_role, "customer-b", "Other account")
+    before = setup.repo.get_user(CUSTOMER)
+    other = setup.repo.get_user(OTHER)
+    grants = setup.repo.devices_for_user(before["id"])
+    monkeypatch.setenv("WHATSAPP_BOOTSTRAP_PHONE", CUSTOMER)
+    assert bootstrap_admin(setup.repo)
+    after = setup.repo.get_user(CUSTOMER)
+    assert after["id"] == before["id"] and after["customer_id"] == "customer-a"
+    assert after["role"] == "admin" and after["display_name"] == "Admin test" and after["active"] == 1
+    assert setup.repo.devices_for_user(after["id"]) == grants
+    assert setup.repo.get_user(OTHER) == other
+    assert not setup.service.has_global_access(other)
+
+
+def test_bootstrap_failure_is_logged_and_does_not_break_lifespan(setup, monkeypatch, caplog):
+    monkeypatch.setenv("WHATSAPP_BOOTSTRAP_PHONE", ADMIN)
+    class BrokenRepository:
+        def get_user(self, phone):
+            raise OSError(phone)
+    app = FastAPI()
+    app.include_router(create_whatsapp_router(setup.store, setup.chat, repository=BrokenRepository(), client=setup.client, run_worker=False))
+    async def run():
+        async with app.router.lifespan_context(app):
+            status, body = await asgi_request(app, method="GET", query=b"hub.mode=subscribe&hub.verify_token=verify-test&hub.challenge=still-running")
+            assert status == 200 and body == b"still-running"
+    monkeypatch.setenv("WHATSAPP_VERIFY_TOKEN", "verify-test")
+    asyncio.run(run())
+    assert "WhatsApp admin bootstrap failed" in caplog.text
+    assert ADMIN not in caplog.text
+
+
+def test_invalid_bootstrap_phone_does_not_create_a_user(setup, monkeypatch, caplog):
+    monkeypatch.setenv("WHATSAPP_BOOTSTRAP_PHONE", "invalid-phone")
+    with setup.repo.connect() as db:
+        before = db.execute("SELECT COUNT(*) FROM whatsapp_users").fetchone()[0]
+    assert bootstrap_admin(setup.repo) is False
+    with setup.repo.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM whatsapp_users").fetchone()[0] == before
+    assert "WhatsApp admin bootstrap failed" in caplog.text

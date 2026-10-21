@@ -8,11 +8,12 @@ import joblib
 import pandas as pd
 
 from djua_energy.pipeline.features import build_maintenance_features, build_security_features
+from djua_energy.config.runtime import project_path
 
 
 class LocalInferenceEngine:
     def __init__(self, artifact_dir: str | Path | None = None):
-        self.artifact_dir = Path(artifact_dir or "artifacts")
+        self.artifact_dir = project_path(artifact_dir or "artifacts")
         self.maintenance_model = joblib.load(self.artifact_dir / "maintenance_model.joblib")
         self.security_model = joblib.load(self.artifact_dir / "security_model.joblib")
         self.maintenance_features = joblib.load(self.artifact_dir / "maintenance_features.joblib")

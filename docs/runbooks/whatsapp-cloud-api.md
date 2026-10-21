@@ -1,5 +1,71 @@
 # WhatsApp DJUA — mise en service
 
+## Alignement Meta — 19 octobre 2026
+
+Le canal utilise exactement `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`,
+`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_VERIFY_TOKEN` et `WHATSAPP_APP_SECRET`.
+Le Phone Number ID public cible est `1386186767909577`, avec `v25.0` :
+
+```text
+https://graph.facebook.com/v25.0/1386186767909577/messages
+```
+
+Le WABA ID et le numero de telephone ne sont jamais substitues a ce Phone
+Number ID dans l'URL. Les valeurs restent lues depuis Render; le code ne les
+modifie pas. Aucun secret reel n'est fourni dans le depot. Si un App Secret a
+ete partage dans une conversation, le regenerer dans la meme application Meta
+puis remplacer `WHATSAPP_APP_SECRET` dans Render et redeployer. Sa valeur seule
+ne permet pas de confirmer qu'il correspond a l'application du webhook.
+
+Au demarrage, les parametres absents, les placeholders et les formats invalides
+du Phone Number ID / de la version sont signales par **nom de variable seulement**.
+Une configuration WhatsApp incomplete ne bloque pas `/health`. En production,
+le POST refuse toujours une configuration invalide du secret ou du Phone Number
+ID; le worker laisse les messages deja recus en `pending` jusqu'a une
+configuration valide. Les notifications `statuses` signees sont ignorees avec
+HTTP 200 et ne declenchent aucune reponse.
+
+Les logs `djua.whatsapp.*` exposent les etapes signature, selection, permissions,
+presence des donnees, appels Graph et transitions du worker. Les references de
+messages et de devices sont hachees; les telephones, textes, tokens et secrets
+ne sont pas journalises. Les erreurs Graph n'exposent que le code HTTP.
+
+La base du canal, du worker et de `manage_whatsapp.py` reste celle de
+`RealtimeTelemetryStore`, issue de `DJUA_DATABASE_URL`. Aucun deplacement de
+la base ni de la strategie de stockage n'est effectue par cet alignement.
+Les tables existantes specifiques au Solar Advisor ne sont pas deplacees.
+
+Fichiers concernes : `apps/api/routers/whatsapp.py`,
+`src/djua_energy/channels/whatsapp/config.py` (nouveau), `client.py`, `service.py`,
+`tests/unit/test_whatsapp.py`, `tests/unit/test_deployment.py` et ce guide.
+L'utilitaire ASGI des tests de deploiement a ete corrige pour joindre
+`Content-Type: application/json` aux corps JSON; aucun assouplissement de la
+validation de l'API n'a ete necessaire.
+
+Verification utilisee :
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests --basetemp data/runtime/whatsapp-meta-final -p no:cacheprovider -q
+.\.venv\Scripts\python.exe -m compileall -q apps/api/routers/whatsapp.py src/djua_energy/channels/whatsapp scripts/manage_whatsapp.py
+.\.venv\Scripts\python.exe scripts/manage_whatsapp.py --help
+```
+
+Les tests ciblent aussi la version `v25.0`, l'URL ci-dessus, les en-tetes Bearer
+et JSON, le corps brut signe avec Unicode, un mauvais Phone Number ID, la
+deduplication de bout en bout, les permissions et l'absence de telemetrie. Un
+test lance reellement Uvicorn sur localhost avec une base temporaire et des
+secrets de fixture, puis controle `/health` et le challenge du webhook. Aucun
+message n'est envoye a Meta durant ces tests. Les comptes et mesures de fixture
+restent isoles de la base d'exploitation.
+
+Resultat de l'alignement : **105 tests reussis en 226,29 s**, avec 1010
+avertissements de depreciation NumPy/joblib. Compilation Python, verification
+des espaces Git et aide CLI : OK. Le test de demarrage reel confirme HTTP 200
+JSON pour `/health` et HTTP 200 texte avec le challenge exact pour le webhook.
+Les permissions et le worker sont conserves. L'acceptation reelle des credentials
+par Meta et la correspondance de l'App Secret doivent etre verifiees apres
+redeploiement; les tests locaux utilisent un client Graph factice.
+
 ## Integration dans le projet
 
 L'API reste `apps/api/main.py`. Elle monte le routeur
@@ -80,6 +146,27 @@ Reference de la plateforme :
 [collection officielle Meta](https://www.postman.com/meta/whatsapp-business-platform/overview).
 
 ## Enregistrer le premier ADMIN
+
+Sans acces au Shell Render, ajouter `WHATSAPP_BOOTSTRAP_PHONE` dans
+**Environment**, avec le numero international a enregistrer, puis choisir
+**Save and deploy**. Au demarrage, le repository existant cree ou met a jour
+ce seul compte avec `role=admin`, `display_name=Admin test`, `active=true`, dans
+la base configuree par `DJUA_DATABASE_URL`. Les associations et le customer_id
+eventuels sont conserves. Les autres utilisateurs ne sont pas modifies.
+Le log de confirmation est `WhatsApp admin bootstrap completed`, sans numero.
+Une erreur est journalisee sans bloquer `/health`. Une variable absente ou vide
+ne provoque aucune operation. Les redemarrages ne creent pas de doublons.
+Apres confirmation, la variable peut etre retiree de Render : le compte reste
+enregistre sur le disque persistant. Aucun numero personnel ne doit etre ajoute
+au depot.
+
+Verification du bootstrap le 21 octobre 2026 : **114 tests reussis en 205,59 s**
+avec la commande `python -m pytest tests --basetemp data/runtime/whatsapp-bootstrap-tests -p no:cacheprovider -q`.
+Les tests couvrent creation, mises a jour idempotentes, reactivation, conservation
+des associations, absence de modification des autres roles, variable vide,
+numero invalide et erreur de stockage sans echec du demarrage. Un vrai processus
+Uvicorn confirme aussi la creation automatique de l'admin dans la meme base et
+la reponse HTTP 200 de `/health`. Le numero utilise dans ces tests est fictif.
 
 Dans le **Shell du service Render** (les commandes doivent viser la base du
 service deploye, et non votre base locale) :

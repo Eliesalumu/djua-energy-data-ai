@@ -1,11 +1,32 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import re
 import unicodedata
 
 from djua_energy.chat.realtime_context import build_realtime_fleet_context, build_realtime_kit_context
 from .client import WhatsAppSendError
+from .config import channel_logger, setting
+
+logger = channel_logger("worker")
+
+
+def bootstrap_admin(repository) -> bool:
+    """Reuse the CLI's user upsert in the channel's existing database."""
+    phone = setting("WHATSAPP_BOOTSTRAP_PHONE")
+    if not phone:
+        return False
+    try:
+        existing = repository.get_user(phone)
+        repository.upsert_user(phone, role="admin", display_name="Admin test", active=True,
+                               customer_id=existing["customer_id"] if existing else None)
+    except Exception:
+        # Exception messages and SQL traces may contain the private phone number.
+        logger.error("WhatsApp admin bootstrap failed: check WHATSAPP_BOOTSTRAP_PHONE and DJUA_DATABASE_URL")
+        return False
+    logger.info("WhatsApp admin bootstrap completed")
+    return True
 
 
 def normalized(text: str) -> str:
@@ -38,7 +59,9 @@ class WhatsAppService:
 
     def answer(self, phone: str, message: str) -> str:
         user = self.repository.get_user(phone)
+        logger.info("WHATSAPP DJUA identity found=%s active=%s role=%s", bool(user), bool(user and user["active"]), user["role"] if user else "unknown")
         if not user or not user["active"]:
+            logger.warning("WHATSAPP DJUA authorization denied: unknown or inactive account")
             return "Acces refuse. Votre numero n'est pas enregistre ou votre compte est inactif. Contactez le support DJUA ENERGY."
         global_access = self.has_global_access(user)
         grants = self.repository.devices_for_user(user["id"])
@@ -50,6 +73,7 @@ class WhatsAppService:
         client_query = re.search(r"\bclient\s+([\w .'-]+)", message, re.I)
         if client_query:
             if not global_access:
+                logger.warning("WHATSAPP DJUA authorization denied: customer lookup")
                 return "Acces refuse : la recherche d'autres clients n'est pas autorisee pour votre compte."
             term = client_query.group(1).strip(" .?!")
             matches = self.repository.search_customers(term)
@@ -61,7 +85,7 @@ class WhatsAppService:
             devices = self.repository.devices_for_customer(customer_id)
             context = build_realtime_fleet_context(self.store, [row["device_id"] for row in devices], topic)
             context["access"] = {**scope, "customer_id": customer_id, "device_ids": [row["device_id"] for row in devices]}
-            return self.chat.answer_from_context(message, context).answer
+            return self._answer_context(message, context)
 
         candidates = grants
         if global_access:
@@ -87,6 +111,7 @@ class WhatsAppService:
                 requested.add(ref)
         if requested:
             if not global_access and any(ref.casefold() not in aliases for ref in requested):
+                logger.warning("WHATSAPP DJUA authorization denied: foreign device")
                 return "Acces refuse : ce device ou kit ne fait pas partie de votre perimetre autorise."
             selected = sorted({device_id for ref in requested for device_id in aliases.get(ref.casefold(), {ref})})
         else:
@@ -94,10 +119,13 @@ class WhatsAppService:
 
         fleet_question = bool(re.search(r"\b(parc|global|globale|tous|toutes|plusieurs|alertes|critiques|kits|devices)\b", text))
         if fleet_question and not global_access and "parc" in text:
+            logger.warning("WHATSAPP DJUA authorization denied: global fleet")
             return "Acces refuse : la situation globale du parc est reservee aux comptes habilites."
         if not selected:
+            logger.info("WHATSAPP DATA no device or telemetry in scope")
             return "Aucun device associe ou aucune donnee disponible dans votre perimetre. Contactez le support pour associer votre kit."
         if len(selected) > 1 and not fleet_question and not requested:
+            logger.info("WHATSAPP DJUA selection ambiguous device_count=%s", len(selected))
             return "Vous avez plusieurs kits. Lequel souhaitez-vous consulter ? " + ", ".join(selected[:20])
         scope["device_ids"] = selected
         if len(selected) == 1 and not (global_access and fleet_question):
@@ -105,6 +133,14 @@ class WhatsAppService:
         else:
             context = build_realtime_fleet_context(self.store, selected, topic)
             context["access"] = scope
+        return self._answer_context(message, context)
+
+    def _answer_context(self, message: str, context: dict) -> str:
+        access = context["access"]
+        refs = [hashlib.sha256(device.encode()).hexdigest()[:12] for device in access["device_ids"]]
+        logger.info("WHATSAPP DJUA authorization granted role=%s device_refs=%s", access["role"], ",".join(refs[:10]))
+        found = context["kit"]["found"] if "kit" in context else context["device_count"] > 0
+        logger.info("WHATSAPP DATA telemetry found=%s", found)
         return self.chat.answer_from_context(message, context).answer
 
     def process_next(self) -> bool:
@@ -112,15 +148,21 @@ class WhatsAppService:
         if not message:
             return False
         message_id = message["message_id"]
+        ref = hashlib.sha256(message_id.encode()).hexdigest()[:12]
+        logger.info("WHATSAPP WORKER processing message_ref=%s", ref)
         try:
             answer = self.answer(message["phone_number"], message["body"])
             # Persist before the network call; never automatically resend uncertain deliveries.
             self.repository.update_message(message_id, "sending", response=answer)
+            logger.info("WHATSAPP WORKER sending message_ref=%s", ref)
             self.client.send_text(message["phone_number"], answer)
             self.repository.update_message(message_id, "sent")
+            logger.info("WHATSAPP WORKER sent message_ref=%s", ref)
         except WhatsAppSendError as exc:
             status = "uncertain" if exc.code == "meta_delivery_uncertain" or exc.code.startswith("meta_http_5") else "failed"
             self.repository.update_message(message_id, status, error_code=exc.code)
+            logger.warning("WHATSAPP WORKER %s message_ref=%s code=%s", status, ref, exc.code)
         except Exception:
             self.repository.update_message(message_id, "failed", error_code="processing_failed")
+            logger.error("WHATSAPP WORKER failed message_ref=%s code=processing_failed", ref)
         return True

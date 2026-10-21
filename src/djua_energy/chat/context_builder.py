@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,9 +10,10 @@ import pandas as pd
 
 from djua_energy.pipeline.inference import LocalInferenceEngine
 from djua_energy.pipeline.synthetic_data import dataset_row_to_telemetry_record
+from djua_energy.config.runtime import project_path
 
 
-DATASET_PATH = Path("data/generated/mvp_dataset.csv")
+DATASET_PATH = project_path("data/generated/mvp_dataset.csv")
 
 
 SCENARIO_LABELS = {
@@ -43,7 +45,7 @@ def extract_device_query(message: str) -> DeviceQuery:
 
 
 def load_dataset(dataset_path: str | Path | None = None) -> pd.DataFrame:
-    path = Path(dataset_path or DATASET_PATH)
+    path = project_path(dataset_path or os.getenv("DJUA_CHAT_DATASET") or DATASET_PATH)
     if not path.exists():
         raise FileNotFoundError(f"Dataset introuvable: {path}")
     return pd.read_csv(path)

@@ -16,9 +16,13 @@ Routes frontend actuellement disponibles :
 
 from dataclasses import asdict
 from datetime import UTC, datetime
+import logging
+import os
+import sqlite3
 from typing import Annotated, Any, Literal
 from fastapi import FastAPI, HTTPException, Path, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
@@ -33,6 +37,11 @@ from djua_energy.database.realtime_store import RealtimeTelemetryStore
 from djua_energy.kit_intelligence.service import build_kit_intelligence
 from djua_energy.solar_advisor.service import SolarAdvisorService
 from apps.api.routers.whatsapp import create_whatsapp_router
+from djua_energy.config.runtime import PROJECT_ROOT, LazyResource, project_path
+from djua_energy.config.http import cors_origins
+
+logger = logging.getLogger(__name__)
+STATIC_DIR = PROJECT_ROOT / "apps/api/static"
 
 app = FastAPI(
     title="Djua Energy IoT Demo",
@@ -43,12 +52,19 @@ app = FastAPI(
         "les champs optionnels utiles aux modeles et des exemples directement testables."
     ),
 )
-app.mount("/static", StaticFiles(directory="apps/api/static"), name="static")
-engine = LocalInferenceEngine("artifacts")
-realtime_store = RealtimeTelemetryStore()
+app.add_middleware(CORSMiddleware, allow_origins=cors_origins(), allow_credentials=True,
+                   allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], allow_headers=["*"])
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+engine = LazyResource(LocalInferenceEngine)
+realtime_store = LazyResource(RealtimeTelemetryStore)
 telemetry_service = TelemetryIngestionService(engine, realtime_store=realtime_store)
-chat_service = DjuaChatService(engine=engine)
-solar_advisor_service = SolarAdvisorService()
+chat_service = LazyResource(lambda: DjuaChatService(engine=engine))
+solar_advisor_service = LazyResource(SolarAdvisorService)
+
+if (os.getenv("RENDER") or os.getenv("DJUA_ENV") == "production") and not (os.getenv("FRONTEND_URL") or os.getenv("CORS_ORIGINS")):
+    logger.warning("CORS configuration missing: set FRONTEND_URL or CORS_ORIGINS")
+if not os.getenv("OPENAI_API_KEY"):
+    logger.warning("AI_PROVIDER configuration missing: OPENAI_API_KEY; local fallback remains enabled")
 
 app.include_router(create_whatsapp_router(realtime_store, chat_service))
 
@@ -284,6 +300,7 @@ class TelemetryIngestionRequest(BaseModel):
 
 class AiChatRequest(BaseModel):
     model_config = {
+        "str_strip_whitespace": True,
         "json_schema_extra": {
             "example": {
                 "message": "Parle-moi du device-0 et explique le risque maintenance.",
@@ -291,7 +308,7 @@ class AiChatRequest(BaseModel):
         },
     }
 
-    message: str = Field(..., min_length=1, description="Question en langage naturel sur un device ou la flotte.")
+    message: str = Field(..., min_length=1, max_length=4000, description="Question en langage naturel sur un device ou la flotte.")
 
 
 class KitConsoleChatRequest(BaseModel):
@@ -988,13 +1005,44 @@ def _not_found(entity: str, entity_id: str) -> HTTPException:
     summary="Verifier que l'API est demarree",
     description="Retourne un statut simple pour les tests, les probes AWS App Runner et la verification manuelle.",
 )
-@app.get("/", include_in_schema=False)
-def frontend_home() -> FileResponse:
-    return FileResponse("apps/api/static/kit_console.html")
-
-
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "djua-energy-iot-demo"}
+
+
+@app.get("/", include_in_schema=False)
+def frontend_home() -> FileResponse:
+    return FileResponse(STATIC_DIR / "kit_console.html")
+
+
+@app.get("/ready")
+def ready():
+    from djua_energy.config.openai_settings import configured_api_key
+    from djua_energy.chat.context_builder import DATASET_PATH
+    required = ["maintenance_model.joblib", "security_model.joblib", "maintenance_features.joblib", "security_features.joblib", "metadata.json"]
+    checks = {"dataset": project_path(os.getenv("DJUA_CHAT_DATASET") or DATASET_PATH).is_file(),
+              "artifacts": all((PROJECT_ROOT / "artifacts" / name).is_file() for name in required)}
+    try:
+        with realtime_store._connect() as connection:
+            connection.execute("SELECT 1")
+        checks["storage"] = True
+    except (OSError, sqlite3.Error, ValueError):
+        checks["storage"] = False
+        logger.error("READY storage unavailable")
+    warnings = []
+    try:
+        from djua_energy.config.openai_settings import configured_timeout
+        configured_timeout()
+        if not configured_api_key():
+            warnings.append("OPENAI_API_KEY")
+        checks["configuration"] = True
+    except (OSError, ValueError):
+        checks["configuration"] = False
+        warnings.append("OPENAI_API_KEY or DJUA_OPENAI_TIMEOUT_SECONDS")
+    if not (os.getenv("FRONTEND_URL") or os.getenv("CORS_ORIGINS")):
+        warnings.append("FRONTEND_URL or CORS_ORIGINS")
+    healthy = all(checks.values())
+    return JSONResponse({"status": "ready" if healthy else "not_ready", "checks": checks,
+                         "missing_optional_configuration": warnings}, status_code=200 if healthy else 503)
 
 
 @app.post(
@@ -1055,7 +1103,20 @@ def telemetry_analyze(payload: TelemetryIngestionRequest) -> dict:
     ),
 )
 def ai_chat(payload: AiChatRequest) -> dict:
-    return chat_service.answer(payload.message).to_dict()
+    logger.info("AI_CHAT request received")
+    try:
+        result = chat_service.answer(payload.message).to_dict()
+        if not isinstance(result.get("answer"), str) or not result["answer"].strip():
+            raise RuntimeError("Invalid chat response")
+        result.setdefault("ok", True)
+        logger.info("AI_CHAT completed used_llm=%s", bool(result.get("used_llm")))
+        return result
+    except (OSError, sqlite3.Error, ValueError, KeyError):
+        logger.error("AI_CHAT context or configuration unavailable")
+        return JSONResponse({"ok": False, "error": {"code": "CHAT_CONTEXT_UNAVAILABLE", "message": "Le contexte du chat est indisponible. Verifiez /ready et les logs du backend."}}, status_code=503)
+    except Exception:
+        logger.error("AI_CHAT internal error")
+        return JSONResponse({"ok": False, "error": {"code": "CHAT_INTERNAL_ERROR", "message": "Le chat ne peut pas repondre pour le moment."}}, status_code=500)
 
 
 @app.get(
@@ -1130,7 +1191,7 @@ def solar_advisor_conversation(payload: SolarConversationRequest) -> dict:
 
 @app.get("/demo/solar-advisor", include_in_schema=False)
 def solar_advisor_demo() -> FileResponse:
-    return FileResponse("apps/api/static/solar_advisor.html")
+    return FileResponse(STATIC_DIR / "solar_advisor.html")
 
 
 @app.get(
@@ -1521,7 +1582,7 @@ def _kit_console_local_chat_answer(message: str, context: dict[str, Any]) -> str
     description="Page HTML locale pour saisir les variables telemetry, lancer la prediction et discuter du resultat.",
 )
 def demo_kit_console() -> FileResponse:
-    return FileResponse("apps/api/static/kit_console.html")
+    return FileResponse(STATIC_DIR / "kit_console.html")
 
 
 @app.post(

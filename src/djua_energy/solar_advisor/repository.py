@@ -7,9 +7,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterator
+from djua_energy.config.runtime import project_path
 
 
-DEFAULT_DATABASE_PATH = Path("data/runtime/solar_advisor.sqlite")
+DEFAULT_DATABASE_PATH = project_path("data/runtime/solar_advisor.sqlite")
 
 
 def _now_iso() -> str:
@@ -19,7 +20,7 @@ def _now_iso() -> str:
 class SolarAdvisorRepository:
     def __init__(self, database_path: str | Path | None = None) -> None:
         env_path = os.getenv("DJUA_SOLAR_ADVISOR_DB")
-        self.database_path = Path(database_path or env_path or DEFAULT_DATABASE_PATH)
+        self.database_path = project_path(database_path or env_path or DEFAULT_DATABASE_PATH)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 

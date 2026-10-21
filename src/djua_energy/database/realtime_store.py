@@ -7,9 +7,10 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterator
+from djua_energy.config.runtime import project_path
 
 
-DEFAULT_DATABASE_PATH = Path("data/runtime/djua_realtime.sqlite")
+DEFAULT_DATABASE_PATH = project_path("data/runtime/djua_realtime.sqlite")
 
 
 def _now_iso() -> str:
@@ -21,9 +22,9 @@ def _database_path_from_env() -> Path:
     if not url:
         return DEFAULT_DATABASE_PATH
     if url.startswith("sqlite:///"):
-        return Path(url.replace("sqlite:///", "", 1))
+        return project_path(url.replace("sqlite:///", "", 1))
     if url.startswith("sqlite://"):
-        return Path(url.replace("sqlite://", "", 1))
+        return project_path(url.replace("sqlite://", "", 1))
     raise ValueError(
         "DJUA_DATABASE_URL doit etre une URL sqlite pour ce MVP, "
         "exemple: sqlite:///data/runtime/djua_realtime.sqlite"

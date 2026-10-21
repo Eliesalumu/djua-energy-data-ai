@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -17,7 +19,10 @@ from djua_energy.chat.context_builder import (
 )
 from djua_energy.chat.prompts import SYSTEM_PROMPT, build_user_prompt
 from djua_energy.pipeline.inference import LocalInferenceEngine
-from djua_energy.config.openai_settings import configured_api_key, configured_model, generation_options
+from djua_energy.config.openai_settings import configured_api_key, configured_model, configured_timeout, generation_options
+from djua_energy.config.runtime import LazyResource
+
+logger = logging.getLogger(__name__)
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -38,9 +43,13 @@ class ChatResult:
     context: dict[str, Any]
     sources: list[str]
     error: str | None = None
+    error_code: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "ok": True,
+            "mode": "ai" if self.used_llm else "local",
+            "warning": {"code": self.error_code or "AI_UNAVAILABLE", "message": self.error} if self.error else None,
             "answer": self.answer,
             "intent": self.intent,
             "device_id": self.device_id,
@@ -57,11 +66,11 @@ class OpenAIResponsesClient:
         *,
         api_key: str | None = None,
         model: str | None = None,
-        timeout_seconds: int = 45,
+        timeout_seconds: int | None = None,
     ) -> None:
         self._api_key = api_key
         self.model = model or configured_model()
-        self.timeout_seconds = timeout_seconds
+        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else configured_timeout()
 
     @property
     def api_key(self) -> str | None:
@@ -98,8 +107,14 @@ class OpenAIResponsesClient:
             },
             method="POST",
         )
-        with urlopen(request, timeout=self.timeout_seconds) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        logger.info("AI_PROVIDER request starting")
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            logger.info("AI_PROVIDER completed")
+        except Exception as exc:
+            logger.warning("AI_PROVIDER failed code=%s", _llm_error_code(exc))
+            raise
         return _extract_output_text(payload)
 
 
@@ -116,6 +131,16 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     raise RuntimeError("La reponse OpenAI ne contient pas de texte exploitable.")
 
 
+def _llm_error_code(exc: Exception) -> str:
+    if isinstance(exc, HTTPError):
+        return {401: "AI_AUTHENTICATION_ERROR", 403: "AI_PERMISSION_ERROR", 429: "AI_RATE_LIMIT"}.get(exc.code, "AI_PROVIDER_ERROR")
+    if isinstance(exc, TimeoutError):
+        return "AI_TIMEOUT"
+    if isinstance(exc, URLError):
+        return "AI_NETWORK_ERROR"
+    return "AI_PROVIDER_ERROR"
+
+
 def _friendly_llm_error(exc: Exception) -> str:
     if isinstance(exc, HTTPError):
         if exc.code == 429:
@@ -127,7 +152,7 @@ def _friendly_llm_error(exc: Exception) -> str:
         return "OpenAI indisponible: connexion reseau bloquee ou impossible."
     if isinstance(exc, TimeoutError):
         return "OpenAI indisponible: delai de reponse depasse."
-    return f"OpenAI indisponible: {exc}"
+    return "OpenAI indisponible: reponse inexploitable ou erreur du fournisseur."
 
 
 def _fallback_device_answer(context: dict[str, Any]) -> str:
@@ -189,9 +214,18 @@ class DjuaChatService:
         engine: LocalInferenceEngine | None = None,
         llm_client: OpenAIResponsesClient | None = None,
     ) -> None:
-        self.dataset = dataset if dataset is not None else load_dataset()
-        self.engine = engine or LocalInferenceEngine("artifacts")
+        self._dataset = dataset
+        self._dataset_lock = Lock()
+        self.engine = engine or LazyResource(LocalInferenceEngine)
         self.llm_client = llm_client or OpenAIResponsesClient()
+
+    @property
+    def dataset(self) -> pd.DataFrame:
+        if self._dataset is None:
+            with self._dataset_lock:
+                if self._dataset is None:
+                    self._dataset = load_dataset()
+        return self._dataset
 
     def answer_from_context(self, message: str, context: dict[str, Any]) -> ChatResult:
         """Answer with an already authorized realtime context, with no CSV fallback."""
@@ -247,6 +281,7 @@ class DjuaChatService:
                     context=context,
                     sources=sources,
                     error=_friendly_llm_error(exc),
+                    error_code=_llm_error_code(exc),
                 )
 
         return ChatResult(
@@ -257,4 +292,5 @@ class DjuaChatService:
             context=context,
             sources=sources,
             error="OPENAI_API_KEY absente; reponse locale de secours utilisee.",
+            error_code="AI_NOT_CONFIGURED",
         )

@@ -34,13 +34,13 @@ form.addEventListener("submit", async event => {
     const url = quoteQuestion
       ? `/solar-advisor/recommendations/${encodeURIComponent(recommendationId)}/ask`
       : "/solar-advisor/conversation";
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(quoteQuestion ? { question: text } : { message: text, context })
+    const result = await window.DjuaApi.request(url, {
+      method: "POST", body: quoteQuestion ? { question: text } : { message: text, context }
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : `Erreur HTTP ${response.status}`);
+    window.DjuaApi.requireAnswer(result, ["assistant_message", "answer", "explanation"]);
+    if (result.recommendation && (!result.recommendation.quote || !result.recommendation.sizing || typeof result.recommendation.recommendation_id !== "string")) {
+      throw new window.DjuaApi.ApiError("Le devis renvoye par le serveur est incomplet.", 200, "INVALID_QUOTE_RESPONSE");
+    }
     if (result.request) context = result.request;
     if (result.recommendation) {
       const rec = result.recommendation;

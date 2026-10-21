@@ -22,6 +22,16 @@ def configured_model() -> str:
     return os.getenv("DJUA_OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4.1-mini"
 
 
+def configured_timeout() -> int:
+    try:
+        value = int(os.getenv("DJUA_OPENAI_TIMEOUT_SECONDS", "45"))
+        if not 1 <= value <= 90:
+            raise ValueError
+        return value
+    except ValueError:
+        raise ValueError("DJUA_OPENAI_TIMEOUT_SECONDS doit etre un entier entre 1 et 90.") from None
+
+
 def generation_options(model: str, max_output_tokens: int) -> dict:
     # Reasoning models do not accept the temperature used by GPT-4 models.
     if model.startswith(("gpt-5", "o1", "o3", "o4")):

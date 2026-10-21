@@ -15,6 +15,10 @@ services:
         value: gpt-4.1-mini
       - key: DJUA_ENV
         value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: DJUA_OPENAI_TIMEOUT_SECONDS
+        value: "45"
       - key: DJUA_DATABASE_URL
         value: sqlite:////app/data/runtime/djua_realtime.sqlite
       - key: WHATSAPP_VERIFY_TOKEN

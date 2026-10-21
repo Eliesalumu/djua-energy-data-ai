@@ -395,18 +395,7 @@ function renderResult(response) {
 }
 
 async function postJson(url, body) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(body)
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    const detail = data.detail || data.error || data;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail, null, 2));
-  }
-  return data;
+  return window.DjuaApi.request(url, { method: "POST", body });
 }
 
 function addMessage(role, text) {
@@ -526,7 +515,8 @@ chatForm.addEventListener("submit", async (event) => {
       message,
       context: buildChatContext(message)
     });
-    await window.DjuaTyping.write(pending, answer.answer || "Je n'ai pas trouve d'explication exploitable.", () => {
+    window.DjuaApi.requireAnswer(answer);
+    await window.DjuaTyping.write(pending, answer.answer, () => {
       chatLog.scrollTop = chatLog.scrollHeight;
     });
     if (answer.used_llm === false) {
