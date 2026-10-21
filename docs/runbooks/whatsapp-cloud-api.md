@@ -99,7 +99,7 @@ deployer le code :
 | `OPENAI_API_KEY` | Cle fonctionnelle du projet OpenAI; facultative pour le fallback |
 | `DJUA_OPENAI_MODEL` | `gpt-4.1-mini`, ou modele compatible Responses configure |
 | `DJUA_ENV` | `production` |
-| `WHATSAPP_GLOBAL_ROLES` | Vide par defaut; elevation facultative explicite `support` et/ou `technician`, separes par une virgule |
+| `WHATSAPP_GLOBAL_ROLES` | Variable historique ignoree pour les permissions : seul admin est global |
 | `DJUA_DATABASE_URL` | `sqlite:////app/data/runtime/djua_realtime.sqlite` pour le Docker fourni |
 
 Ne jamais mettre les vrais secrets dans Git, le Dockerfile ou le frontend.
@@ -214,7 +214,8 @@ jour d'un compte conserve ses associations; une revocation est explicite.
 | support | Devices explicitement associes |
 | admin | Tous les devices stockes et recherche des clients enregistres |
 
-La configuration peut elever support/technician, jamais customer. Un numero
+Seul admin dispose d'un acces global, independamment de `WHATSAPP_GLOBAL_ROLES`.
+Customer, support et technician restent limites aux associations explicites. Un numero
 inconnu ou inactif ne recoit aucune mesure. Une demande explicite visant un
 device etranger est refusee avant l'appel IA. Plusieurs kits sans selection
 explicite entrainent une question de clarification, meme si un kit est marque

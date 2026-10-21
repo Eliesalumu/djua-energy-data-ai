@@ -96,6 +96,12 @@ class WhatsAppRepository:
             return [dict(row) for row in db.execute(
                 "SELECT device_id,kit_id,is_primary FROM whatsapp_device_access WHERE whatsapp_user_id=? ORDER BY device_id", (user_id,))]
 
+    def registered_devices(self) -> list[dict]:
+        """Devices registered through grants, including those awaiting telemetry."""
+        with self.connect() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT device_id, MAX(kit_id) AS kit_id FROM whatsapp_device_access GROUP BY device_id ORDER BY device_id")]
+
     def search_customers(self, term: str) -> list[dict]:
         with self.connect() as db:
             rows = db.execute("SELECT DISTINCT customer_id,display_name FROM whatsapp_users WHERE role='customer' AND customer_id IS NOT NULL").fetchall()

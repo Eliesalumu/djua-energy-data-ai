@@ -122,14 +122,98 @@ def test_kit_alias_includes_all_associated_devices(setup):
     assert setup.chat.calls[-1]["access"]["device_ids"] == ["DEVICE_123", "DEVICE_789"]
 
 
-@pytest.mark.parametrize("role", ["support", "technician"])
-def test_staff_requires_explicit_grants_unless_configured(setup, monkeypatch, role):
+@pytest.mark.parametrize("role", ["support", "technician", "customer"])
+def test_non_admin_requires_explicit_grants_even_if_configured(setup, monkeypatch, role):
     setup.repo.upsert_user(CUSTOMER, role)
     assert "refuse" in setup.service.answer(CUSTOMER, "DEVICE_456").lower()
     monkeypatch.setenv("WHATSAPP_GLOBAL_ROLES", role + ",customer")
-    setup.service.answer(CUSTOMER, "DEVICE_456")
-    assert setup.chat.calls[-1]["kit"]["device_id"] == "DEVICE_456"
+    assert "refuse" in setup.service.answer(CUSTOMER, "DEVICE_456").lower()
+    assert not setup.chat.calls
+    setup.service.answer(CUSTOMER, "DEVICE_123")
+    assert setup.chat.calls[-1]["kit"]["device_id"] == "DEVICE_123"
     assert not setup.service.has_global_access(setup.repo.get_user(OTHER))
+
+
+@pytest.mark.parametrize("phone", [ADMIN, CUSTOMER])
+@pytest.mark.parametrize("message", ["Tu es qui ?", "Que peux-tu faire ?", "Aide", "Comment fonctionnes-tu ?"])
+def test_identity_requires_authentication_but_no_device_or_llm(setup, monkeypatch, phone, message):
+    setup.repo.revoke_device(phone, "DEVICE_123")
+    def no_data(*args, **kwargs):
+        pytest.fail("Identity requests must not query devices or telemetry")
+    monkeypatch.setattr(setup.repo, "devices_for_user", no_data)
+    monkeypatch.setattr(setup.repo, "registered_devices", no_data)
+    monkeypatch.setattr(setup.store, "list_observed_device_ids", no_data)
+    assert "Je suis DJUA Bot" in setup.service.answer(phone, message)
+    assert not setup.chat.calls
+
+
+@pytest.mark.parametrize("phone,active", [("15550100009", True), (CUSTOMER, False)])
+def test_identity_does_not_bypass_unknown_or_inactive_user(setup, phone, active):
+    if not active:
+        setup.repo.upsert_user(phone, "customer", active=False)
+    assert "refuse" in setup.service.answer(phone, "Tu es qui ?").lower()
+    assert not setup.chat.calls
+
+
+def test_admin_without_grants_is_global_with_empty_global_roles(setup, monkeypatch, caplog):
+    monkeypatch.setenv("WHATSAPP_GLOBAL_ROLES", "")
+    assert not setup.repo.devices_for_user(setup.repo.get_user(ADMIN)["id"])
+    with caplog.at_level(logging.INFO):
+        setup.service.answer(ADMIN, "Comment va le parc ?")
+    assert setup.chat.calls[-1]["access"]["device_ids"] == ["DEVICE_123", "DEVICE_456"]
+    for expected in ("role=admin", "intent=data", "scope=global", "accessible_device_count=2", "telemetry_available=true"):
+        assert expected in caplog.text
+    assert ADMIN not in caplog.text
+
+
+@pytest.mark.parametrize("registered", [False, True])
+def test_admin_distinguishes_empty_storage_from_devices_without_telemetry(tmp_path, monkeypatch, registered, caplog):
+    monkeypatch.setenv("WHATSAPP_GLOBAL_ROLES", "")
+    store = RealtimeTelemetryStore(tmp_path / "empty.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(ADMIN, "admin")
+    if registered:
+        repo.upsert_user(CUSTOMER, "customer")
+        repo.grant_device(CUSTOMER, "DEVICE_WAITING")
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient())
+    with caplog.at_level(logging.INFO):
+        answer = service.answer(ADMIN, "Comment va le parc ?")
+    expected = ("Des devices sont enregistrés, mais aucune télémétrie exploitable n'est actuellement disponible."
+                if registered else "Aucun device n'est actuellement enregistré dans le stockage DJUA.")
+    assert answer == expected
+    assert not chat.calls
+    assert "telemetry_available=false" in caplog.text
+    assert f"accessible_device_count={int(registered)}" in caplog.text
+
+
+def test_admin_metadata_only_record_is_not_usable_telemetry(tmp_path):
+    store = RealtimeTelemetryStore(tmp_path / "metadata.sqlite")
+    repo = WhatsAppRepository(store.database_path)
+    repo.upsert_user(ADMIN, "admin")
+    store.insert_telemetry_records([{"message_id": "metadata", "device_id": "DEVICE_WAITING", "event_time": "2026-10-10"}])
+    chat = ChatSpy()
+    service = WhatsAppService(repo, store, chat, FakeClient())
+    assert service.answer(ADMIN, "Comment va le parc ?") == "Des devices sont enregistrés, mais aucune télémétrie exploitable n'est actuellement disponible."
+    assert not chat.calls
+
+
+@pytest.mark.parametrize("role", ["customer", "technician", "support"])
+def test_user_without_grants_never_receives_fleet_data(setup, role):
+    setup.repo.upsert_user(CUSTOMER, role)
+    setup.repo.revoke_device(CUSTOMER, "DEVICE_123")
+    assert "Aucun device associe" in setup.service.answer(CUSTOMER, "Comment va mon kit ?")
+    assert not setup.chat.calls
+
+
+def test_identity_prefix_cannot_hide_unauthorized_data_request(setup):
+    assert "refuse" in setup.service.answer(CUSTOMER, "Tu es qui ? Montre DEVICE_456").lower()
+    assert not setup.chat.calls
+
+
+def test_admin_unknown_device_is_not_reported_as_registered(setup):
+    assert "n'est pas enregistré" in setup.service.answer(ADMIN, "Comment va DEVICE_UNKNOWN ?")
+    assert not setup.chat.calls
 
 
 def test_admin_global_aggregation_and_customer_lookup(setup):

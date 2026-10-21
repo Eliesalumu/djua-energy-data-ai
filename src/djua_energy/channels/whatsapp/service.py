@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import hashlib
 import re
 import unicodedata
@@ -48,14 +47,23 @@ def detect_topic(message: str) -> str:
     return "general"
 
 
+def is_non_data_request(message: str) -> bool:
+    # Match complete requests only: an identity prefix must not bypass data permissions.
+    text = re.sub(r"[^\w\s]", " ", normalized(message))
+    text = " ".join(text.split())
+    return text in {
+        "tu es qui", "qui es tu", "qui etes vous", "vous etes qui",
+        "que peux tu faire", "que pouvez vous faire", "aide", "help",
+        "comment fonctionnes tu", "comment fonctionnez vous",
+    }
+
+
 class WhatsAppService:
     def __init__(self, repository, store, chat, client):
         self.repository, self.store, self.chat, self.client = repository, store, chat, client
 
     def has_global_access(self, user: dict) -> bool:
-        # Customer is never eligible for elevation by configuration.
-        configured = set(os.getenv("WHATSAPP_GLOBAL_ROLES", "").split(",")) & {"technician", "support"}
-        return user["role"] == "admin" or user["role"] in configured
+        return user["role"] == "admin"
 
     def answer(self, phone: str, message: str) -> str:
         user = self.repository.get_user(phone)
@@ -64,7 +72,14 @@ class WhatsAppService:
             logger.warning("WHATSAPP DJUA authorization denied: unknown or inactive account")
             return "Acces refuse. Votre numero n'est pas enregistre ou votre compte est inactif. Contactez le support DJUA ENERGY."
         global_access = self.has_global_access(user)
-        grants = self.repository.devices_for_user(user["id"])
+        intent = "non_data" if is_non_data_request(message) else "data"
+        scope_name = "global" if global_access else "granted_devices"
+        logger.info("WHATSAPP DJUA request role=%s intent=%s scope=%s", user["role"], intent, scope_name)
+        if intent == "non_data":
+            logger.info("WHATSAPP DATA accessible_device_count=0 telemetry_available=false (not requested)")
+            return ("Je suis DJUA Bot, l'assistant de supervision de DJUA ENERGY. "
+                    "Je peux vous aider à consulter l'état des kits solaires, la batterie, "
+                    "la production, les alertes et les informations disponibles dans votre périmètre d'accès.")
         text = normalized(message)
         topic = detect_topic(message)
         scope = {"role": user["role"], "customer_id": user["customer_id"], "global_access": global_access}
@@ -87,13 +102,16 @@ class WhatsAppService:
             context["access"] = {**scope, "customer_id": customer_id, "device_ids": [row["device_id"] for row in devices]}
             return self._answer_context(message, context)
 
-        candidates = grants
         if global_access:
-            candidates = []
+            registered = {row["device_id"]: row for row in self.repository.registered_devices()}
             for device_id in self.store.list_observed_device_ids():
                 state = self.store.get_device_state(device_id)
                 recent = self.store.recent_records_for_device(device_id, limit=1) if not state else []
-                candidates.append({"device_id": device_id, "kit_id": (state or (recent[-1] if recent else {})).get("kit_id")})
+                registered[device_id] = {"device_id": device_id, "kit_id": (state or (recent[-1] if recent else {})).get("kit_id") or registered.get(device_id, {}).get("kit_id")}
+            candidates = list(registered.values())
+        else:
+            candidates = self.repository.devices_for_user(user["id"])
+        logger.info("WHATSAPP DATA accessible_device_count=%s", len(candidates))
         aliases = {}
         for grant in candidates:
             aliases.setdefault(grant["device_id"].casefold(), set()).add(grant["device_id"])
@@ -113,6 +131,9 @@ class WhatsAppService:
             if not global_access and any(ref.casefold() not in aliases for ref in requested):
                 logger.warning("WHATSAPP DJUA authorization denied: foreign device")
                 return "Acces refuse : ce device ou kit ne fait pas partie de votre perimetre autorise."
+            if global_access and any(ref.casefold() not in aliases for ref in requested):
+                logger.info("WHATSAPP DATA requested device not registered telemetry_available=false")
+                return "Un device ou kit demandé n'est pas enregistré dans le stockage DJUA. Vérifiez son identifiant."
             selected = sorted({device_id for ref in requested for device_id in aliases.get(ref.casefold(), {ref})})
         else:
             selected = sorted({row["device_id"] for row in candidates})
@@ -122,7 +143,9 @@ class WhatsAppService:
             logger.warning("WHATSAPP DJUA authorization denied: global fleet")
             return "Acces refuse : la situation globale du parc est reservee aux comptes habilites."
         if not selected:
-            logger.info("WHATSAPP DATA no device or telemetry in scope")
+            logger.info("WHATSAPP DATA telemetry_available=false")
+            if global_access:
+                return "Aucun device n'est actuellement enregistré dans le stockage DJUA."
             return "Aucun device associe ou aucune donnee disponible dans votre perimetre. Contactez le support pour associer votre kit."
         if len(selected) > 1 and not fleet_question and not requested:
             logger.info("WHATSAPP DJUA selection ambiguous device_count=%s", len(selected))
@@ -139,8 +162,14 @@ class WhatsAppService:
         access = context["access"]
         refs = [hashlib.sha256(device.encode()).hexdigest()[:12] for device in access["device_ids"]]
         logger.info("WHATSAPP DJUA authorization granted role=%s device_refs=%s", access["role"], ",".join(refs[:10]))
-        found = context["kit"]["found"] if "kit" in context else context["device_count"] > 0
-        logger.info("WHATSAPP DATA telemetry found=%s", found)
+        available = context["kit"]["telemetry_available"] if "kit" in context else context["telemetry_available"]
+        logger.info("WHATSAPP DATA role=%s intent=data scope=%s accessible_device_count=%s telemetry_available=%s",
+                    access["role"], "global" if access["global_access"] else "granted_devices",
+                    len(access["device_ids"]), str(available).lower())
+        if access["global_access"] and not available:
+            if not access["device_ids"]:
+                return "Aucun device n'est enregistré pour ce client dans le stockage DJUA."
+            return "Des devices sont enregistrés, mais aucune télémétrie exploitable n'est actuellement disponible."
         return self.chat.answer_from_context(message, context).answer
 
     def process_next(self) -> bool:
