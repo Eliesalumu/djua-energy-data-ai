@@ -1010,6 +1010,11 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "djua-energy-iot-demo"}
 
 
+@app.get("/privacy", include_in_schema=False)
+def privacy_policy() -> FileResponse:
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
 @app.get("/", include_in_schema=False)
 def frontend_home() -> FileResponse:
     return FileResponse(STATIC_DIR / "kit_console.html")
