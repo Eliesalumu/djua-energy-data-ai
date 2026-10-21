@@ -38,6 +38,7 @@ from djua_energy.database.realtime_store import RealtimeTelemetryStore
 from djua_energy.kit_intelligence.service import build_kit_intelligence
 from djua_energy.solar_advisor.service import SolarAdvisorService
 from apps.api.routers.whatsapp import create_whatsapp_router
+from djua_energy.channels.whatsapp import service as whatsapp_business
 from djua_energy.config.runtime import PROJECT_ROOT, LazyResource, project_path
 from djua_energy.config.http import cors_origins
 
@@ -1007,7 +1008,11 @@ def _not_found(entity: str, entity_id: str) -> HTTPException:
     description="Retourne un statut simple pour les tests, les probes AWS App Runner et la verification manuelle.",
 )
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "djua-energy-iot-demo"}
+    return {
+        "status": "ok", "service": "djua-energy-iot-demo",
+        "revision": os.getenv("RENDER_GIT_COMMIT", "local"),
+        "whatsapp_logic_version": getattr(whatsapp_business, "LOGIC_VERSION", "legacy"),
+    }
 
 
 @app.get("/privacy", include_in_schema=False)

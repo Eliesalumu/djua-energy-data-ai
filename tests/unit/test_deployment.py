@@ -72,6 +72,16 @@ def test_health_is_json_and_does_not_touch_dependencies(monkeypatch):
     assert json.loads(body)["status"] == "ok"
 
 
+def test_health_identifies_loaded_whatsapp_logic_and_render_revision(monkeypatch):
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "test-revision")
+    status, _, body = request(main.app, "/health")
+    assert status == 200
+    assert json.loads(body)["revision"] == "test-revision"
+    assert json.loads(body)["whatsapp_logic_version"] == "auth-intent-scope-v2"
+    monkeypatch.delattr(main.whatsapp_business, "LOGIC_VERSION")
+    assert main.health()["whatsapp_logic_version"] == "legacy"
+
+
 def test_import_and_health_work_without_models_dataset_or_database(tmp_path):
     code = """
 import joblib, pandas

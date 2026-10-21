@@ -22,7 +22,12 @@ automatiquement. Ne jamais mettre la cle dans un frontend ou un Blueprint.
 
 ## Verification
 
-- `/health` doit repondre.
+- `/health` doit repondre. `revision` indique `RENDER_GIT_COMMIT` et
+  `whatsapp_logic_version` doit valoir `auth-intent-scope-v2` pour le routage
+  identite/aide sans telemetrie. `legacy` signale un ancien module charge.
+- En runtime Python natif, `pip install -r requirements.txt` installe aussi
+  le projet en editable (`-e .`), afin de charger le code metier de `src`
+  depuis le depot courant, sans reutiliser une ancienne copie installee.
 - `/demo/solar-advisor` fournit une interface de conversation, un resume du
   devis et un mode Question sur le devis. La source OpenAI ou la cause du
   fallback sont affichees sous chaque reponse.

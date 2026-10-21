@@ -9,6 +9,7 @@ from .client import WhatsAppSendError
 from .config import channel_logger, setting
 
 logger = channel_logger("worker")
+LOGIC_VERSION = "auth-intent-scope-v2"
 
 
 def bootstrap_admin(repository) -> bool:
@@ -61,6 +62,7 @@ def is_non_data_request(message: str) -> bool:
 class WhatsAppService:
     def __init__(self, repository, store, chat, client):
         self.repository, self.store, self.chat, self.client = repository, store, chat, client
+        logger.info("WHATSAPP DJUA logic_version=%s", LOGIC_VERSION)
 
     def has_global_access(self, user: dict) -> bool:
         return user["role"] == "admin"
