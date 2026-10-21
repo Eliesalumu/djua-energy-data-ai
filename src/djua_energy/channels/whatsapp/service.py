@@ -9,7 +9,7 @@ from .client import WhatsAppSendError
 from .config import channel_logger, setting
 
 logger = channel_logger("worker")
-LOGIC_VERSION = "auth-intent-scope-v2"
+LOGIC_VERSION = "openai-first-v3"
 
 
 def bootstrap_admin(repository) -> bool:
@@ -76,28 +76,28 @@ class WhatsAppService:
         global_access = self.has_global_access(user)
         intent = "non_data" if is_non_data_request(message) else "data"
         scope_name = "global" if global_access else "granted_devices"
+        scope = {"role": user["role"], "customer_id": user["customer_id"], "global_access": global_access}
         logger.info("WHATSAPP DJUA request role=%s intent=%s scope=%s", user["role"], intent, scope_name)
         if intent == "non_data":
             logger.info("WHATSAPP DATA accessible_device_count=0 telemetry_available=false (not requested)")
-            return ("Je suis DJUA Bot, l'assistant de supervision de DJUA ENERGY. "
+            return self._reply(message, scope, ("Je suis DJUA Bot, l'assistant de supervision de DJUA ENERGY. "
                     "Je peux vous aider à consulter l'état des kits solaires, la batterie, "
-                    "la production, les alertes et les informations disponibles dans votre périmètre d'accès.")
+                    "la production, les alertes et les informations disponibles dans votre périmètre d'accès."), "non_data")
         text = normalized(message)
         topic = detect_topic(message)
-        scope = {"role": user["role"], "customer_id": user["customer_id"], "global_access": global_access}
 
         # Client lookup is a backend operation, not an instruction delegated to the LLM.
         client_query = re.search(r"\bclient\s+([\w .'-]+)", message, re.I)
         if client_query:
             if not global_access:
                 logger.warning("WHATSAPP DJUA authorization denied: customer lookup")
-                return "Acces refuse : la recherche d'autres clients n'est pas autorisee pour votre compte."
+                return self._reply(message, scope, "Acces refuse : la recherche d'autres clients n'est pas autorisee pour votre compte.", "access_denied")
             term = client_query.group(1).strip(" .?!")
             matches = self.repository.search_customers(term)
             exact = [row for row in matches if row["customer_id"].casefold() == term.casefold()]
             matches = exact or matches
             if len({row["customer_id"] for row in matches}) != 1:
-                return "Client introuvable ou recherche ambigue. Precisez son identifiant. " + ", ".join(sorted({row["customer_id"] for row in matches}))
+                return self._reply(message, scope, "Client introuvable ou recherche ambigue. Precisez son identifiant.", "selection_required")
             customer_id = matches[0]["customer_id"]
             devices = self.repository.devices_for_customer(customer_id)
             context = build_realtime_fleet_context(self.store, [row["device_id"] for row in devices], topic)
@@ -132,10 +132,10 @@ class WhatsAppService:
         if requested:
             if not global_access and any(ref.casefold() not in aliases for ref in requested):
                 logger.warning("WHATSAPP DJUA authorization denied: foreign device")
-                return "Acces refuse : ce device ou kit ne fait pas partie de votre perimetre autorise."
+                return self._reply(message, scope, "Acces refuse : ce device ou kit ne fait pas partie de votre perimetre autorise.", "access_denied")
             if global_access and any(ref.casefold() not in aliases for ref in requested):
                 logger.info("WHATSAPP DATA requested device not registered telemetry_available=false")
-                return "Un device ou kit demandé n'est pas enregistré dans le stockage DJUA. Vérifiez son identifiant."
+                return self._reply(message, scope, "Un device ou kit demandé n'est pas enregistré dans le stockage DJUA. Vérifiez son identifiant.", "device_not_found")
             selected = sorted({device_id for ref in requested for device_id in aliases.get(ref.casefold(), {ref})})
         else:
             selected = sorted({row["device_id"] for row in candidates})
@@ -143,15 +143,15 @@ class WhatsAppService:
         fleet_question = bool(re.search(r"\b(parc|global|globale|tous|toutes|plusieurs|alertes|critiques|kits|devices)\b", text))
         if fleet_question and not global_access and "parc" in text:
             logger.warning("WHATSAPP DJUA authorization denied: global fleet")
-            return "Acces refuse : la situation globale du parc est reservee aux comptes habilites."
+            return self._reply(message, scope, "Acces refuse : la situation globale du parc est reservee aux comptes habilites.", "access_denied")
         if not selected:
             logger.info("WHATSAPP DATA telemetry_available=false")
             if global_access:
-                return "Aucun device n'est actuellement enregistré dans le stockage DJUA."
-            return "Aucun device associe ou aucune donnee disponible dans votre perimetre. Contactez le support pour associer votre kit."
+                return self._reply(message, scope, "Aucun device n'est actuellement enregistré dans le stockage DJUA.", "no_devices")
+            return self._reply(message, scope, "Aucun device associe ou aucune donnee disponible dans votre perimetre. Contactez le support pour associer votre kit.", "no_accessible_devices")
         if len(selected) > 1 and not fleet_question and not requested:
             logger.info("WHATSAPP DJUA selection ambiguous device_count=%s", len(selected))
-            return "Vous avez plusieurs kits. Lequel souhaitez-vous consulter ? " + ", ".join(selected[:20])
+            return self._reply(message, {**scope, "device_ids": selected}, "Vous avez plusieurs kits. Lequel souhaitez-vous consulter ? " + ", ".join(selected[:20]), "selection_required")
         scope["device_ids"] = selected
         if len(selected) == 1 and not (global_access and fleet_question):
             context = {"access": scope, "topic": topic, "kit": build_realtime_kit_context(self.store, selected[0])}
@@ -159,6 +159,22 @@ class WhatsAppService:
             context = build_realtime_fleet_context(self.store, selected, topic)
             context["access"] = scope
         return self._answer_context(message, context)
+
+    def _reply(self, message: str, scope: dict, fallback: str, status: str) -> str:
+        return self._generate(message, {
+            "access": {**scope, "device_ids": scope.get("device_ids", [])},
+            "status": status, "telemetry_available": False, "fallback_answer": fallback,
+        })
+
+    def _generate(self, message: str, context: dict) -> str:
+        context["channel"] = "whatsapp"
+        context["assistant"] = {
+            "name": "DJUA Bot", "organization": "DJUA ENERGY",
+            "capabilities": ["supervision des kits solaires", "batterie", "production", "alertes", "explications et aide"],
+        }
+        result = self.chat.answer_from_context(message, context)
+        logger.info("WHATSAPP DJUA response source=%s", "openai" if getattr(result, "used_llm", False) else "fallback")
+        return result.answer
 
     def _answer_context(self, message: str, context: dict) -> str:
         access = context["access"]
@@ -170,9 +186,9 @@ class WhatsAppService:
                     len(access["device_ids"]), str(available).lower())
         if access["global_access"] and not available:
             if not access["device_ids"]:
-                return "Aucun device n'est enregistré pour ce client dans le stockage DJUA."
-            return "Des devices sont enregistrés, mais aucune télémétrie exploitable n'est actuellement disponible."
-        return self.chat.answer_from_context(message, context).answer
+                return self._reply(message, access, "Aucun device n'est enregistré pour ce client dans le stockage DJUA.", "no_devices")
+            return self._reply(message, access, "Des devices sont enregistrés, mais aucune télémétrie exploitable n'est actuellement disponible.", "no_telemetry")
+        return self._generate(message, context)
 
     def process_next(self) -> bool:
         message = self.repository.claim_next()

@@ -23,8 +23,9 @@ automatiquement. Ne jamais mettre la cle dans un frontend ou un Blueprint.
 ## Verification
 
 - `/health` doit repondre. `revision` indique `RENDER_GIT_COMMIT` et
-  `whatsapp_logic_version` doit valoir `auth-intent-scope-v2` pour le routage
-  identite/aide sans telemetrie. `legacy` signale un ancien module charge.
+  `whatsapp_logic_version` doit valoir `openai-first-v3` : les reponses WhatsApp
+  des comptes authentifies passent par OpenAI, meme sans telemetrie.
+  `legacy` signale un ancien module charge.
 - En runtime Python natif, `pip install -r requirements.txt` installe aussi
   le projet en editable (`-e .`), afin de charger le code metier de `src`
   depuis le depot courant, sans reutiliser une ancienne copie installee.

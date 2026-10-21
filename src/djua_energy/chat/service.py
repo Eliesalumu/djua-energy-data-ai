@@ -231,8 +231,8 @@ class DjuaChatService:
         """Answer with an already authorized realtime context, with no CSV fallback."""
         from djua_energy.chat.realtime_context import realtime_fallback
 
-        fallback = realtime_fallback(context)
-        if ("kit" in context and not context["kit"]["found"]) or context.get("device_count") == 0:
+        fallback = context["fallback_answer"] if "fallback_answer" in context else realtime_fallback(context)
+        if context.get("channel") != "whatsapp" and (("kit" in context and not context["kit"]["found"]) or context.get("device_count") == 0):
             return ChatResult(fallback, "realtime", context.get("kit", {}).get("device_id"), False,
                               context, ["RealtimeTelemetryStore"], "Donnees indisponibles.")
         if self.llm_client.available:
@@ -240,6 +240,11 @@ class DjuaChatService:
                 answer = self.llm_client.generate(
                     message + "\nRespecte le role et le perimetre fournis. Client: court, simple et actionnable. "
                     "Admin: chiffres calcules et priorites. Technicien: details disponibles. "
+                    "Pour WhatsApp, presente-toi comme DJUA Bot et reponds naturellement aux questions generales, "
+                    "a l'aide et aux demandes d'explication, meme sans device. Les explications generales sur "
+                    "l'energie solaire peuvent utiliser tes connaissances, sans les presenter comme des mesures du parc. "
+                    "Respecte le statut backend (refus, selection requise, donnees absentes). "
+                    "fallback_answer est une indication factuelle de secours, pas un texte a recopier systematiquement. "
                     "Distingue observations, predictions, simulation et donnees absentes. Ne deduis jamais une cause certaine.", context)
                 return ChatResult(answer, "realtime", context.get("kit", {}).get("device_id"), True,
                                   context, ["RealtimeTelemetryStore"])

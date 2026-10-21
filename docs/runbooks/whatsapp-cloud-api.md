@@ -73,7 +73,11 @@ L'API reste `apps/api/main.py`. Elle monte le routeur
 Meta, le repository SQLite, les permissions, la reception persistante et le
 client Graph API. `chat/realtime_context.py` interroge `RealtimeTelemetryStore`.
 `DjuaChatService.answer_from_context` reutilise le client IA et fournit un
-fallback local sur le contexte deja autorise. Le chat historique conserve son
+fallback local sur le contexte deja autorise. Toutes les reponses conversationnelles
+des utilisateurs authentifies passent par OpenAI, y compris l'identite, l'aide,
+les explications et les donnees absentes. Les textes locaux servent uniquement
+de secours si OpenAI est indisponible. Les comptes inconnus/inactifs sont refuses
+avant l'appel IA. Le chat historique conserve son
 comportement. WhatsApp n'utilise jamais le CSV de demonstration.
 
 Trois tables sont initialisees automatiquement, de facon additive, dans la meme

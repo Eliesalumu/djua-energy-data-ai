@@ -77,7 +77,7 @@ def test_health_identifies_loaded_whatsapp_logic_and_render_revision(monkeypatch
     status, _, body = request(main.app, "/health")
     assert status == 200
     assert json.loads(body)["revision"] == "test-revision"
-    assert json.loads(body)["whatsapp_logic_version"] == "auth-intent-scope-v2"
+    assert json.loads(body)["whatsapp_logic_version"] == "openai-first-v3"
     monkeypatch.delattr(main.whatsapp_business, "LOGIC_VERSION")
     assert main.health()["whatsapp_logic_version"] == "legacy"
 
